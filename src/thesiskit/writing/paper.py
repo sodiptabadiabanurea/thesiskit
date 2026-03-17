@@ -1,7 +1,7 @@
 """Paper writing module."""
 
 from dataclasses import dataclass
-from typing import Optional, list
+from typing import Optional, List
 from pathlib import Path
 
 
@@ -17,10 +17,10 @@ class PaperSection:
 class Paper:
     """A research paper."""
     title: str
-    authors: list[str]
+    authors: List[str]
     abstract: str
-    sections: list[PaperSection]
-    references: list[str]  # BibTeX keys
+    sections: List[PaperSection]
+    references: List[str]  # BibTeX keys
     
     def to_markdown(self) -> str:
         """Convert paper to Markdown."""
@@ -93,10 +93,10 @@ class PaperBuilder:
     
     def __init__(self):
         self.title = ""
-        self.authors: list[str] = []
+        self.authors: List[str] = []
         self.abstract = ""
-        self.sections: list[PaperSection] = []
-        self.references: list[str] = []
+        self.sections: List[PaperSection] = []
+        self.references: List[str] = []
     
     def set_title(self, title: str) -> "PaperBuilder":
         self.title = title
@@ -116,7 +116,7 @@ class PaperBuilder:
         content: str,
         level: int = 1,
     ) -> "PaperBuilder":
-        self.sections.append(PaperSection(title, content, level))
+        self.sections.append(PaperSection(title=title, content=content, level=level))
         return self
     
     def add_reference(self, bib_key: str) -> "PaperBuilder":
