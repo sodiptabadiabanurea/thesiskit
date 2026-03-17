@@ -3,8 +3,10 @@
 from enum import Enum
 from typing import Callable, Optional
 
-# Lazy imports to_neurips_generator = None
+# Lazy imports to avoid circular dependencies
+_neurips_generator = None
 _icml_generator = None
+_iclr_generator = None
 
 
 class Conference(str, Enum):
@@ -38,11 +40,24 @@ def _get_icml_generator():
     return _icml_generator
 
 
+def _get_iclr_generator():
+    """Lazy load ICLR generator."""
+    global _iclr_generator
+    if _iclr_generator is None:
+        try:
+            from thesiskit.templates.iclr import generate_iclr_latex
+            _iclr_generator = generate_iclr_latex
+        except ImportError:
+            pass
+    return _iclr_generator
+
+
 def get_template(conference: Conference) -> Optional[Callable]:
     """Get template generator for conference."""
     generators = {
         Conference.NEURIPS_2025: _get_neurips_generator(),
         Conference.ICML_2026: _get_icml_generator(),
+        Conference.ICLR_2026: _get_iclr_generator(),
     }
     return generators.get(conference)
 
