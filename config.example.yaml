@@ -1,0 +1,41 @@
+# Example ThesisKit Configuration
+
+project:
+  name: "my-research"
+
+research:
+  topic: "Your research topic here"
+  domains:
+    - "machine-learning"
+  daily_paper_count: 10
+  quality_threshold: 4.0
+
+runtime:
+  timezone: "UTC"
+  max_parallel_tasks: 3
+  approval_timeout_hours: 12
+  retry_limit: 2
+
+llm:
+  provider: "openai-compatible"
+  base_url: "https://api.openai.com/v1"
+  api_key_env: "OPENAI_API_KEY"
+  primary_model: "gpt-4o"
+  fallback_models:
+    - "gpt-4o-mini"
+
+experiment:
+  mode: "sandbox"
+  time_budget_sec: 300
+  max_iterations: 10
+  metric_key: "primary_metric"
+  metric_direction: "minimize"
+  sandbox:
+    python_path: ".venv/bin/python"
+    gpu_required: false
+    max_memory_mb: 4096
+
+security:
+  hitl_required_stages: [5, 9, 20]
+  allow_publish_without_approval: false
+  redact_sensitive_logs: true
