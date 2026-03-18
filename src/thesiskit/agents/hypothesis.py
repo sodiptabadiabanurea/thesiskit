@@ -8,9 +8,6 @@ from thesiskit.agents.review import (
     BaseAgent,
     AgentRole,
     AgentPerspective,
-    InnovatorAgent,
-    PragmatistAgent,
-    ContrarianAgent,
 )
 
 
