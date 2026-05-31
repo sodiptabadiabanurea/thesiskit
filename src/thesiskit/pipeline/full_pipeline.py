@@ -13,7 +13,6 @@ from thesiskit.pipeline.stages import Stage, get_phase, is_gate, STAGE_SEQUENCE
 from thesiskit.llm import get_client
 from thesiskit.literature.arxiv import ArxivClient
 from thesiskit.literature.semanticscholar import SemanticScholarClient
-from thesiskit.literature.citations import CitationVerifier
 from thesiskit.agents.review import MultiAgentReview
 from thesiskit.agents.hypothesis import HypothesisDebate
 from thesiskit.experiment import Sandbox
@@ -91,7 +90,7 @@ class Pipeline:
         self._setup(output_dir)
         self.state["topic"] = topic
         
-        console.print(f"\n[bold blue]ThesisKit Pipeline[/bold blue]")
+        console.print("\n[bold blue]ThesisKit Pipeline[/bold blue]")
         console.print(f"Run ID: {self.run_id}")
         console.print(f"Topic: {topic}")
         console.print(f"Output: {self.output_dir}\n")
@@ -110,7 +109,7 @@ class Pipeline:
         ) as progress:
             
             for stage in STAGE_SEQUENCE:
-                task = progress.add_task(
+                progress.add_task(
                     f"Stage {stage.value:2d}: {stage.name}",
                     total=None
                 )
@@ -139,7 +138,7 @@ class Pipeline:
         # Save results
         self._save_results(results)
         
-        console.print(f"\n[bold green]Pipeline complete![/bold green]")
+        console.print("\n[bold green]Pipeline complete![/bold green]")
         console.print(f"Stages completed: {len(results['stages'])}/20")
         
         return results
@@ -335,7 +334,7 @@ Return as JSON array of questions."""
     def _stage_peer_review(self) -> Dict[str, Any]:
         """Stage 18: Multi-agent peer review."""
         if self.state["paper"]:
-            review = MultiAgentReview(llm_client=self.llm)
+            _ = MultiAgentReview(llm_client=self.llm)
             # Review would happen here
             return {"status": "done"}
         return {"status": "skipped"}

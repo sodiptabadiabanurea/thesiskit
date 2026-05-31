@@ -52,7 +52,7 @@ def run_pipeline(
     output_dir = output_dir or Path("artifacts") / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    console.print(f"\n[bold blue]ThesisKit Pipeline[/bold blue]")
+    console.print("\n[bold blue]ThesisKit Pipeline[/bold blue]")
     console.print(f"Run ID: {run_id}")
     console.print(f"Topic: {config.research.topic}")
     console.print(f"Output: {output_dir}")
@@ -94,7 +94,7 @@ def run_pipeline(
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
-    console.print(f"\n[bold green]Pipeline complete![/bold green]")
+    console.print("\n[bold green]Pipeline complete![/bold green]")
     console.print(f"Summary: {summary_path}")
     
     return results

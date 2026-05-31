@@ -1,7 +1,7 @@
 """Paper writing module."""
 
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List
 from pathlib import Path
 
 

@@ -1,76 +1,132 @@
 # ThesisKit
 
-> **Everything you need to ship academic research.**
+> **Citation-verified academic research automation — from idea to draft.**
 
-From research idea to conference-ready paper — with real citations, verified sources, and zero hallucinations.
+ThesisKit is an alpha-stage Python toolkit for turning a research topic into an
+inspectable paper draft with verified citation metadata, reproducible experiment
+artifacts, and review notes you can audit before trusting.
 
-## Why ThesisKit?
+It is not a magic “paper generator.” The goal is narrower and more useful:
+make every citation, experiment number, and review decision traceable.
 
-Academic research automation tools either hallucinate citations or require endless babysitting. ThesisKit is different:
+## Quick start
 
-- **📚 Real Citations** — arXiv, Semantic Scholar, CrossRef integration. Every citation verified.
-- **🔬 Reproducible** — Experiments run in sandbox with actual results, not fake data.
-- **📝 Conference-Ready** — NeurIPS, ICML, ICLR LaTeX templates built-in.
-- **🤖 Multi-Agent Review** — Peer review simulation catches methodology gaps before submission.
-- **⚡ Fast Iteration** — Generate-verify-repair loop converges quickly.
-
-## Quick Start
+ThesisKit is not published on PyPI yet. Install from source:
 
 ```bash
-# Install
-pip install thesiskit
-
-# Run research pipeline
-thesiskit run --topic "Your research idea here" --auto-approve
-
-# Output: paper.md, paper.tex, references.bib, charts/, experiment_runs/
+git clone https://github.com/sodiptabadiabanurea/thesiskit.git
+cd thesiskit
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
 ```
 
-## How It Works
+Run the CLI from a local checkout:
 
-```
-Idea → Literature → Hypothesis → Experiment → Analysis → Paper → Review → LaTeX
-  ↓        ↓            ↓            ↓           ↓         ↓        ↓        ↓
-Topic   arXiv +      Multi-agent   Sandbox     Stats    Draft   Peer    Conference
-Init    S2 APIs      Debate        Execution   Analysis        Review  Template
+```bash
+thesiskit run --topic "retrieval-augmented generation for small research teams" --auto-approve --output artifacts/demo-run
 ```
 
-**8 Phases, 20 Stages:**
+> **Alpha status:** ThesisKit is actively developed. The checked-in tests and
+> `examples/mini-run/` demonstrate the current artifact shape, but the project
+> is not claiming production-grade automation or real conference acceptance.
 
-| Phase | Stages | What Happens |
-|-------|--------|--------------|
-| **A: Scoping** | 1-2 | Decompose topic into research questions |
-| **B: Literature** | 3-6 | Search, collect, screen, extract from real papers |
-| **C: Synthesis** | 7-8 | Cluster findings, generate testable hypotheses |
-| **D: Design** | 9-11 | Design experiments, generate code, plan resources |
-| **E: Execution** | 12-13 | Run experiments with self-healing |
-| **F: Analysis** | 14-15 | Multi-agent analysis, proceed/refine/pivot decision |
-| **G: Writing** | 16-19 | Outline, draft, peer review, revise |
-| **H: Finalization** | 20 | Quality gate, LaTeX export, citation verification |
+## Mini-run example
 
-## Key Features
+Start here if you want to see the intended output before running anything:
 
-### ✅ Verified Citations
-- 4-layer verification: arXiv ID → CrossRef DOI → Semantic Scholar → LLM relevance
-- Hallucinated references automatically removed
-- BibTeX with real, clickable links
+```text
+examples/mini-run/
+├── README.md
+├── input/topic.txt
+├── citations/papers.json
+├── citations/verification_report.md
+├── citations/references.bib
+├── experiment/config.yaml
+├── experiment/results.json
+├── draft/paper.md
+└── verification/full_report.md
+```
 
-### ✅ Real Experiments
-- Sandbox execution with actual code runs
-- NaN/Inf detection and auto-repair
-- Partial result capture on failure
-- Hardware-aware (GPU/MPS/CPU auto-detect)
+The mini-run uses this topic:
 
-### ✅ Multi-Agent Review
-- Optimist, Skeptic, Methodologist perspectives
-- Evidence-methodology consistency checks
-- Catches overclaiming before you submit
+```text
+retrieval-augmented generation for small research teams
+```
 
-### ✅ Conference Templates
-- NeurIPS 2025
-- ICML 2026
-- ICLR 2026
-- Custom templates supported
+It includes three real, resolvable arXiv citations:
+
+| Paper | Source |
+|---|---|
+| Lewis et al., 2020 — *Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks* | arXiv:2005.11401 / DOI:10.48550/arXiv.2005.11401 |
+| Gao et al., 2023 — *Retrieval-Augmented Generation for Large Language Models: A Survey* | arXiv:2312.10997 / DOI:10.48550/arXiv.2312.10997 |
+| Ram et al., 2023 — *In-Context Retrieval-Augmented Language Models* | arXiv:2302.00083 / DOI:10.48550/arXiv.2302.00083 |
+
+The experiment in the example is intentionally synthetic and deterministic
+(`seed: 42`). It is meant to show the output schema and verification gates, not
+to claim a benchmark result.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Idea] --> B[Literature]
+    B --> C[Hypothesis]
+    C --> D[Experiment]
+    D --> E[Analysis]
+    E --> F[Paper draft]
+    F --> G[Review]
+    G --> H[Final artifacts]
+
+    A1[1 Topic intake<br/>2 Research questions] --> B1[3 Search<br/>4 Collect<br/>5 Screen<br/>6 Extract]
+    B1 --> C1[7 Synthesis<br/>8 Hypothesis]
+    C1 --> D1[9 Design<br/>10 Code<br/>11 Resource plan]
+    D1 --> E1[12 Run<br/>13 Repair]
+    E1 --> F1[14 Analyze<br/>15 Decide]
+    F1 --> G1[16 Outline<br/>17 Draft<br/>18 Review<br/>19 Revise]
+    G1 --> H1[20 Export + verify]
+```
+
+The pipeline is organized as **8 phases / 20 stages**:
+
+| Phase | Stages | What happens |
+|---|---:|---|
+| A: Scoping | 1–2 | Turn a topic into research questions |
+| B: Literature | 3–6 | Search, collect, screen, and extract from source papers |
+| C: Synthesis | 7–8 | Cluster findings and propose testable hypotheses |
+| D: Design | 9–11 | Design experiments, generate code, and plan resources |
+| E: Execution | 12–13 | Run experiments and repair failures when possible |
+| F: Analysis | 14–15 | Analyze results and decide proceed/refine/pivot |
+| G: Writing | 16–19 | Outline, draft, review, and revise |
+| H: Finalization | 20 | Export artifacts and verify citations/results |
+
+## What is implemented vs roadmap
+
+| Implemented in the current alpha | Roadmap / not guaranteed yet |
+|---|---|
+| arXiv, Semantic Scholar, and citation data structures | Broader source support such as PubMed and ACL Anthology |
+| Citation metadata and BibTeX helpers | Stronger automated relevance scoring and deduplication |
+| Experiment sandbox primitives | Hardened Docker/Firecracker-style isolation |
+| NeurIPS, ICML, and ICLR template modules | Additional templates such as ACL, EMNLP, CVPR, AAAI |
+| Multi-agent review scaffolding | Human-in-the-loop review gates and web dashboard |
+| Checked-in mini-run artifact example | Production benchmark suite across real research tasks |
+
+## Comparison
+
+| Capability | ThesisKit | Elicit | PaperQA | AI Scientist |
+|---|---|---|---|---|
+| Primary workflow | Topic → draft artifacts | Literature discovery | Question answering over papers | Automated idea/experiment loop |
+| Citation source integration | arXiv / Semantic Scholar / DOI metadata | Yes | Yes | Limited / varies |
+| Citation verification report | Yes, explicit artifact | Not the main focus | Partial/source-grounded | Not the main focus |
+| Experiment sandbox | Yes, alpha | No | No | Yes |
+| LaTeX template export | Yes, draft quality | No | No | Partial / varies |
+| Multi-agent review | Yes, alpha | No | No | Yes |
+| Best fit | Auditable research draft pipeline | Finding papers | Asking questions over documents | Autonomous experiment generation |
+
+This table is positioning, not a benchmark. The point of ThesisKit is the
+traceable artifact bundle: citations, experiment outputs, draft, reviews, and
+verification report in one run directory.
 
 ## Configuration
 
@@ -95,80 +151,91 @@ experiment:
     python_path: ".venv/bin/python"
 ```
 
-### Use Any LLM
+### Use your own LLM backend
 
 ```yaml
-# OpenAI
+# OpenAI-compatible endpoint
 llm:
   provider: "openai-compatible"
   base_url: "https://api.openai.com/v1"
+  api_key_env: "OPENAI_API_KEY"
 
 # Anthropic
 llm:
   provider: "anthropic"
   api_key_env: "ANTHROPIC_API_KEY"
 
-# Local (Ollama, vLLM, etc.)
+# Local models through Ollama/vLLM/etc.
 llm:
   provider: "openai-compatible"
   base_url: "http://localhost:11434/v1"
 
-# ACP (Claude Code, Codex, etc.)
+# ACP-style agent integration, e.g. Codex/Claude Code wrappers
 llm:
   provider: "acp"
   acp:
     agent: "codex"
 ```
 
-## Output Structure
+## Output structure
 
-```
+A full run is expected to create an artifact directory like:
+
+```text
 artifacts/run-YYYYMMDD-HHMMSS/
-├── paper_draft.md          # Full paper in Markdown
+├── paper_draft.md
 ├── deliverables/
-│   ├── paper.tex           # Conference-ready LaTeX
-│   ├── references.bib      # Verified BibTeX citations
-│   └── charts/             # Auto-generated figures
-├── experiment_runs/        # Code + results
+│   ├── paper.tex
+│   ├── references.bib
+│   └── charts/
+├── experiment_runs/
 ├── verification_report.json
-└── reviews.md              # Multi-agent peer review
+└── reviews.md
 ```
 
-## Comparison
+The exact contents will evolve while the project is alpha. The rule is stable:
+outputs should be inspectable, reproducible where possible, and honest about
+which claims are verified.
 
-| Feature | ThesisKit | AutoResearchClaw | AI Scientist |
-|---------|-----------|------------------|--------------|
-| Verified citations | ✅ 4-layer | ✅ 4-layer | ❌ |
-| Real experiments | ✅ Sandbox | ✅ Sandbox | ⚠️ Simulated |
-| Multi-agent review | ✅ | ✅ | ❌ |
-| Conference templates | ✅ 3+ | ✅ 3+ | ❌ |
-| Self-healing code | ✅ | ✅ | ❌ |
-| Open source | ✅ MIT | ✅ MIT | ❌ |
+## Development
 
-## Philosophy
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
+```
 
-**No hallucinations.** Every citation is real. Every experiment actually runs.
+Useful targeted checks:
 
-**No babysitting.** Set `--auto-approve` and walk away. The pipeline self-corrects.
-
-**No black boxes.** Every stage produces inspectable artifacts. You always know what happened.
+```bash
+pytest tests/test_examples.py -q
+pytest tests/test_literature.py -q
+```
 
 ## Roadmap
 
 - [ ] Browser-based paper collection
 - [ ] Obsidian knowledge base integration
 - [ ] Parallel stage execution
-- [ ] More conference templates (CVPR, ACL, etc.)
-- [ ] Web UI for monitoring
+- [ ] More conference templates: CVPR, ACL, EMNLP, AAAI
+- [ ] Web UI for monitoring runs
+- [ ] Hardened experiment sandboxing
+- [ ] Reproducibility bundles with locked dependencies and container metadata
 
 ## Contributing
 
-Contributions welcome! Areas of interest:
+Contributions welcome. Good first areas:
 
-- New literature sources (Google Scholar, PubMed, etc.)
+- More literature sources and resolvers
+- Stronger citation verification reports
+- More realistic mini-run examples
 - Additional conference templates
-- Better experiment sandboxing
-- Web dashboard
+- Better sandboxing and failure recovery
+- CLI and documentation cleanup
+
+Please keep claims auditable. If a feature cannot be verified by tests or a
+checked-in example, document it as roadmap rather than implemented behavior.
 
 ## License
 
@@ -180,13 +247,9 @@ If you use ThesisKit in your research:
 
 ```bibtex
 @misc{thesiskit2026,
-  author       = {ThesisKit Contributors},
-  title        = {ThesisKit: Everything You Need to Ship Academic Research},
-  year         = {2026},
-  url          = {https://github.com/YOUR_USERNAME/thesiskit},
+  author = {ThesisKit Contributors},
+  title = {ThesisKit: Citation-Verified Academic Research Automation},
+  year = {2026},
+  url = {https://github.com/sodiptabadiabanurea/thesiskit},
 }
 ```
-
----
-
-**Built for researchers who ship.** 🚀

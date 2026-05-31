@@ -74,7 +74,7 @@ class OptimistAgent(BaseAgent):
         return "You see the best in research. You look for innovation, potential impact, and novel contributions."
     
     def analyze(self, content: str, context: Optional[dict] = None) -> AgentPerspective:
-        prompt = self._build_prompt(content, context)
+        _ = self._build_prompt(content, context)
         # TODO: Call LLM
         return AgentPerspective(
             role=self.role,
@@ -95,7 +95,7 @@ class SkepticAgent(BaseAgent):
         return "You question everything. You look for flaws in methodology, overclaiming, and missing evidence."
     
     def analyze(self, content: str, context: Optional[dict] = None) -> AgentPerspective:
-        prompt = self._build_prompt(content, context)
+        _ = self._build_prompt(content, context)
         # TODO: Call LLM
         return AgentPerspective(
             role=self.role,
@@ -116,7 +116,7 @@ class MethodologistAgent(BaseAgent):
         return "You are a methodology expert. You check experimental design, statistical validity, and reproducibility."
     
     def analyze(self, content: str, context: Optional[dict] = None) -> AgentPerspective:
-        prompt = self._build_prompt(content, context)
+        _ = self._build_prompt(content, context)
         # TODO: Call LLM
         return AgentPerspective(
             role=self.role,

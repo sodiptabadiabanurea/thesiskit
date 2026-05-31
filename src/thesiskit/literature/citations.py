@@ -44,7 +44,7 @@ class Citation:
         
         if self.arxiv_id:
             lines.append(f"  eprint = {{{self.arxiv_id}}},")
-            lines.append(f"  archiveprefix = {{arXiv}},")
+            lines.append("  archiveprefix = {arXiv},")
         
         if self.doi:
             lines.append(f"  doi = {{{self.doi}}},")

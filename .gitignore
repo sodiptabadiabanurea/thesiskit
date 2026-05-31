@@ -43,6 +43,7 @@ htmlcov/
 artifacts/
 *.log
 config.yaml
+!examples/mini-run/experiment/config.yaml
 
 # OS
 .DS_Store

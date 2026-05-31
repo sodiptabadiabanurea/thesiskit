@@ -1,7 +1,6 @@
 """Test full pipeline execution."""
 
 import pytest
-from pathlib import Path
 from thesiskit import run_full_pipeline, Config
 
 
@@ -29,7 +28,6 @@ def test_full_pipeline_minimal(tmp_path):
 @pytest.mark.integration
 def test_pipeline_stage_progression(tmp_path):
     """Test that stages progress in order."""
-    from thesiskit.pipeline.stages import Stage
     
     config = Config()
     

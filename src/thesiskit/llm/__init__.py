@@ -1,7 +1,7 @@
 """LLM integration for ThesisKit agents."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Optional
 import os
 
 
