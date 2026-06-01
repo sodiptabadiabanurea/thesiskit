@@ -1,9 +1,10 @@
 """Multi-agent debate and review system."""
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 from enum import Enum
+from typing import Any, Optional
 
 
 class AgentRole(str, Enum):
@@ -28,6 +29,45 @@ class AgentPerspective:
     suggestions: list[str]
 
 
+def _coerce_string_list(value: Any) -> list[str]:
+    """Normalize LLM JSON values into a clean string list."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates = value.splitlines() or [value]
+    elif isinstance(value, (list, tuple, set)):
+        candidates = value
+    else:
+        candidates = [value]
+
+    normalized = []
+    for item in candidates:
+        text = str(item).strip()
+        text = re.sub(r"^(?:[-•*]|\d+[.)])\s*", "", text).strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def _coerce_content(value: Any, fallback: str) -> str:
+    """Normalize an LLM content field."""
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text or fallback
+
+
+def _unique_preserve_order(items: list[str]) -> list[str]:
+    """Return unique non-empty strings while preserving first-seen order."""
+    seen = set()
+    unique = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
+
+
 class BaseAgent(ABC):
     """Base class for review agents."""
 
@@ -40,6 +80,34 @@ class BaseAgent(ABC):
         """Analyze content from this agent's perspective."""
         pass
 
+    def _analyze_with_optional_llm(
+        self,
+        content: str,
+        context: Optional[dict],
+        fallback: AgentPerspective,
+    ) -> AgentPerspective:
+        """Return an LLM-backed perspective, or the deterministic fallback without an LLM."""
+        if self.llm is None:
+            return fallback
+
+        response = self.llm.generate_json(
+            prompt=self._build_prompt(content, context),
+            system=(
+                "Return only JSON with string field 'content' and array fields "
+                "'key_points', 'concerns', and 'suggestions'."
+            ),
+        )
+        if not isinstance(response, dict):
+            raise ValueError("LLM review response must be a JSON object")
+
+        return AgentPerspective(
+            role=self.role,
+            content=_coerce_content(response.get("content"), fallback.content),
+            key_points=_coerce_string_list(response.get("key_points")),
+            concerns=_coerce_string_list(response.get("concerns")),
+            suggestions=_coerce_string_list(response.get("suggestions")),
+        )
+
     def _build_prompt(self, content: str, context: Optional[dict] = None) -> str:
         """Build prompt for this agent."""
         return f"""You are a {self.role.value} reviewer analyzing academic research.
@@ -51,11 +119,11 @@ Content to analyze:
 
 Context: {context or 'None'}
 
-Provide your analysis in this format:
-1. Main observations (what you see)
-2. Key strengths (from your perspective)
-3. Key concerns (from your perspective)
-4. Specific suggestions for improvement
+Return only a JSON object with these keys:
+- content: concise narrative analysis string
+- key_points: array of key strength/observation strings
+- concerns: array of concern strings
+- suggestions: array of specific improvement strings
 
 Be thorough but concise. Focus on what a {self.role.value} would care about.
 """
@@ -76,14 +144,16 @@ class OptimistAgent(BaseAgent):
         return "You see the best in research. You look for innovation, potential impact, and novel contributions."
 
     def analyze(self, content: str, context: Optional[dict] = None) -> AgentPerspective:
-        _ = self._build_prompt(content, context)
-        # TODO: Call LLM
-        return AgentPerspective(
-            role=self.role,
-            content="[Optimist analysis would be generated here]",
-            key_points=["Innovation potential", "Novel contributions"],
-            concerns=["May need more validation"],
-            suggestions=["Consider additional experiments"],
+        return self._analyze_with_optional_llm(
+            content,
+            context,
+            fallback=AgentPerspective(
+                role=self.role,
+                content="[Optimist analysis would be generated here]",
+                key_points=["Innovation potential", "Novel contributions"],
+                concerns=["May need more validation"],
+                suggestions=["Consider additional experiments"],
+            ),
         )
 
 
@@ -97,14 +167,16 @@ class SkepticAgent(BaseAgent):
         return "You question everything. You look for flaws in methodology, overclaiming, and missing evidence."
 
     def analyze(self, content: str, context: Optional[dict] = None) -> AgentPerspective:
-        _ = self._build_prompt(content, context)
-        # TODO: Call LLM
-        return AgentPerspective(
-            role=self.role,
-            content="[Skeptic analysis would be generated here]",
-            key_points=["Methodological concerns", "Evidence gaps"],
-            concerns=["Potential overclaiming", "Missing controls"],
-            suggestions=["Add more rigorous validation"],
+        return self._analyze_with_optional_llm(
+            content,
+            context,
+            fallback=AgentPerspective(
+                role=self.role,
+                content="[Skeptic analysis would be generated here]",
+                key_points=["Methodological concerns", "Evidence gaps"],
+                concerns=["Potential overclaiming", "Missing controls"],
+                suggestions=["Add more rigorous validation"],
+            ),
         )
 
 
@@ -118,14 +190,16 @@ class MethodologistAgent(BaseAgent):
         return "You are a methodology expert. You check experimental design, statistical validity, and reproducibility."
 
     def analyze(self, content: str, context: Optional[dict] = None) -> AgentPerspective:
-        _ = self._build_prompt(content, context)
-        # TODO: Call LLM
-        return AgentPerspective(
-            role=self.role,
-            content="[Methodologist analysis would be generated here]",
-            key_points=["Experimental design", "Statistical approach"],
-            concerns=["Reproducibility issues"],
-            suggestions=["Add detailed methodology section"],
+        return self._analyze_with_optional_llm(
+            content,
+            context,
+            fallback=AgentPerspective(
+                role=self.role,
+                content="[Methodologist analysis would be generated here]",
+                key_points=["Experimental design", "Statistical approach"],
+                concerns=["Reproducibility issues"],
+                suggestions=["Add detailed methodology section"],
+            ),
         )
 
 
@@ -176,11 +250,11 @@ class MultiAgentReview:
             all_suggestions.extend(p.suggestions)
 
         lines.append("## Key Concerns Across Agents")
-        for concern in set(all_concerns):
+        for concern in _unique_preserve_order(all_concerns):
             lines.append(f"- {concern}")
 
         lines.append("\n## Suggested Improvements")
-        for suggestion in set(all_suggestions):
+        for suggestion in _unique_preserve_order(all_suggestions):
             lines.append(f"- {suggestion}")
 
         return "\n".join(lines)

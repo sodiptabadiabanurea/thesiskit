@@ -190,7 +190,7 @@ The pipeline is organized as **8 phases / 20 stages**:
 | Deterministic 20-stage local runner with one JSON artifact per stage and approval-gate blocking | LLM/tool-backed stage implementations and dashboard approvals |
 | Experiment sandbox primitives | Hardened Docker/Firecracker-style isolation |
 | NeurIPS, ICML, and ICLR template modules | Additional templates such as ACL, EMNLP, CVPR, AAAI |
-| Multi-agent review scaffolding | Human-in-the-loop review gates and web dashboard |
+| LLM-backed multi-agent review scaffolding with deterministic no-LLM fallback | Human-in-the-loop review gates and web dashboard |
 | Checked-in mini-run artifact example | Production benchmark suite across real research tasks |
 
 ## Comparison
