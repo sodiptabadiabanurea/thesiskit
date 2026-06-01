@@ -12,6 +12,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
+from thesiskit.literature.acl_ids import acl_id_from_doi, normalize_acl_id
+
 
 class VerificationLevel(Enum):
     """Citation verification levels."""
@@ -104,6 +106,7 @@ class Citation:
     arxiv_id: Optional[str] = None
     doi: Optional[str] = None
     semantic_scholar_id: Optional[str] = None
+    acl_id: Optional[str] = None
     url: Optional[str] = None
     abstract: Optional[str] = None
     venue: Optional[str] = None
@@ -148,6 +151,7 @@ class Citation:
         _append_bibtex_field(lines, "doi", self.doi)
         _append_bibtex_field(lines, "url", self.url)
         _append_bibtex_field(lines, "semanticscholarid", self.semantic_scholar_id)
+        _append_bibtex_field(lines, "aclid", self.acl_id)
 
         standard_fields = {
             "title",
@@ -164,12 +168,15 @@ class Citation:
             "doi",
             "url",
             "semanticscholarid",
+            "aclid",
         }
         if not self.arxiv_id:
             standard_fields.discard("eprint")
             standard_fields.discard("archiveprefix")
         if not self.semantic_scholar_id:
             standard_fields.discard("semanticscholarid")
+        if not self.acl_id:
+            standard_fields.discard("aclid")
         for name in sorted(self.bibtex_fields):
             cleaned_name = _clean_bibtex_identifier(name)
             if cleaned_name and cleaned_name not in standard_fields:
@@ -202,6 +209,8 @@ class Citation:
             ids.append(f"arXiv: {self.arxiv_id}")
         if self.doi:
             ids.append(f"DOI: {self.doi}")
+        if self.acl_id:
+            ids.append(f"ACL Anthology: {self.acl_id}")
         if ids:
             parts.append("**IDs:** " + " | ".join(ids))
 
@@ -224,6 +233,8 @@ class CitationVerifier:
         arxiv_client=None,
         arxiv_base_url: str | None = None,
         semantic_scholar_client=None,
+        acl_anthology_client=None,
+        acl_base_url: str | None = None,
         cache_dir: Path | str | None = None,
         retry_attempts: int = 1,
         retry_backoff_seconds: float = 0.0,
@@ -231,6 +242,8 @@ class CitationVerifier:
     ):
         if arxiv_client is not None and arxiv_base_url:
             raise ValueError("arxiv_base_url cannot be used together with arxiv_client")
+        if acl_anthology_client is not None and acl_base_url:
+            raise ValueError("acl_base_url cannot be used together with acl_anthology_client")
         if arxiv_client is None:
             from thesiskit.literature.arxiv import ArxivClient
 
@@ -242,9 +255,17 @@ class CitationVerifier:
             from thesiskit.literature.semanticscholar import SemanticScholarClient
 
             semantic_scholar_client = SemanticScholarClient(api_key=s2_api_key)
+        if acl_anthology_client is None:
+            from thesiskit.literature.acl import ACLAnthologyClient
+
+            if acl_base_url:
+                acl_anthology_client = ACLAnthologyClient(base_url=acl_base_url)
+            else:
+                acl_anthology_client = ACLAnthologyClient()
 
         self.arxiv = arxiv_client
         self.s2 = semantic_scholar_client
+        self.acl = acl_anthology_client
         self.cache = _MetadataCache(cache_dir) if cache_dir is not None else None
         self.retry_attempts = max(1, retry_attempts)
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
@@ -367,7 +388,56 @@ class CitationVerifier:
                 )
                 self._check_arxiv_id(citation, external_ids.get("ArXiv"), checks, issues)
                 if not any(check.name == "url" and check.passed for check in checks):
-                    self._check_semantic_scholar_url(citation, s2_paper, checks, issues)
+                    if citation.url and self._is_semantic_scholar_url(citation.url):
+                        self._check_semantic_scholar_url(citation, s2_paper, checks, issues)
+
+        acl_paper = None
+        acl_lookup = _MetadataLookupResult(None)
+        acl_lookup_id = self._acl_lookup_id(citation)
+        acl_lookup_failed = False
+        if acl_lookup_id:
+            try:
+                acl_lookup = self._lookup_metadata(
+                    source="acl_anthology",
+                    key=acl_lookup_id,
+                    fetcher=lambda: self.acl.get_paper(acl_lookup_id),
+                )
+                acl_paper = acl_lookup.paper
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                acl_lookup_failed = True
+                self._add_issue(
+                    checks,
+                    issues,
+                    name="acl_id",
+                    source="acl_anthology",
+                    detail=(
+                        f"ACL Anthology lookup failed for {acl_lookup_id} "
+                        f"after {self.retry_attempts} attempt(s): {exc}"
+                    ),
+                )
+            if acl_paper:
+                source_note = " from cache" if acl_lookup.cache_hit else ""
+                checks.append(
+                    VerificationCheck(
+                        name="acl_id",
+                        source="acl_anthology",
+                        passed=True,
+                        detail=f"Found ACL Anthology record {acl_lookup_id}{source_note}",
+                    )
+                )
+                level = max(level, VerificationLevel.DOI_VERIFIED, key=lambda item: item.value)
+                self._fill_from_acl(citation, acl_paper)
+                self._check_title(citation, acl_paper.get("title"), "acl_anthology", checks, issues)
+                self._check_doi(citation, acl_paper.get("doi"), "acl_anthology", checks, issues)
+                self._check_acl_url(citation, acl_paper, checks, issues)
+            elif not acl_lookup_failed:
+                self._add_issue(
+                    checks,
+                    issues,
+                    name="acl_id",
+                    source="acl_anthology",
+                    detail=f"ACL Anthology record {acl_lookup_id} was not found",
+                )
 
         self._check_required_metadata_was_confirmed(citation, checks, issues)
 
@@ -394,6 +464,8 @@ class CitationVerifier:
             self.arxiv.close()
         if hasattr(self.s2, "close"):
             self.s2.close()
+        if hasattr(self.acl, "close"):
+            self.acl.close()
 
     def _lookup_metadata(
         self,
@@ -493,6 +565,35 @@ class CitationVerifier:
         if not citation.doi and external_ids.get("DOI"):
             citation.doi = external_ids["DOI"]
 
+    def _fill_from_acl(self, citation: Citation, paper: dict) -> None:
+        citation.acl_id = paper.get("id") or citation.acl_id
+        if not citation.title:
+            citation.title = paper.get("title", "")
+        if not citation.authors:
+            citation.authors = paper.get("authors", [])
+        if not citation.year:
+            citation.year = _parse_year(paper.get("year"))
+        if not citation.url:
+            citation.url = paper.get("url")
+        if not citation.doi:
+            citation.doi = paper.get("doi")
+        if not citation.abstract:
+            citation.abstract = paper.get("abstract")
+        if not citation.journal:
+            citation.journal = paper.get("journal")
+        if not citation.booktitle:
+            citation.booktitle = paper.get("booktitle")
+        if not citation.venue:
+            citation.venue = paper.get("booktitle") or paper.get("journal")
+        if not citation.publisher:
+            citation.publisher = paper.get("publisher")
+        if paper.get("bibtex_key") and not citation.bibtex_key:
+            citation.bibtex_key = paper["bibtex_key"]
+        if paper.get("bibtex_entry_type"):
+            citation.bibtex_entry_type = paper["bibtex_entry_type"]
+        if paper.get("bibtex_fields") and not citation.bibtex_fields:
+            citation.bibtex_fields = dict(paper["bibtex_fields"])
+
     def _semantic_scholar_lookup_id(self, citation: Citation) -> Optional[str]:
         if citation.semantic_scholar_id:
             return citation.semantic_scholar_id
@@ -501,6 +602,15 @@ class CitationVerifier:
         if citation.arxiv_id:
             return f"ARXIV:{citation.arxiv_id}"
         return None
+
+    def _acl_lookup_id(self, citation: Citation) -> Optional[str]:
+        if citation.acl_id:
+            return normalize_acl_id(citation.acl_id)
+        if citation.url:
+            url_match = re.search(r"https?://aclanthology\.org/([^#?]+)", citation.url)
+            if url_match:
+                return normalize_acl_id(url_match.group(0))
+        return acl_id_from_doi(citation.doi)
 
     def _check_title(
         self,
@@ -581,6 +691,24 @@ class CitationVerifier:
         if not passed:
             issues.append(f"URL mismatch from Semantic Scholar: {detail}")
 
+    def _check_acl_url(
+        self,
+        citation: Citation,
+        acl_paper: dict,
+        checks: list[VerificationCheck],
+        issues: list[str],
+    ) -> None:
+        if not citation.url:
+            return
+        source_url = acl_paper.get("url")
+        if not source_url:
+            return
+        passed = self._normalize_url(citation.url) == self._normalize_url(source_url)
+        detail = f"expected={citation.url!r}; source={source_url!r}"
+        checks.append(VerificationCheck("url", "acl_anthology", passed, detail))
+        if not passed:
+            issues.append(f"URL mismatch from ACL Anthology: {detail}")
+
     def _check_arxiv_id(
         self,
         citation: Citation,
@@ -606,13 +734,15 @@ class CitationVerifier:
     ) -> None:
         passed_check_names = {check.name for check in checks if check.passed}
         if citation.title and "title" not in passed_check_names:
-            issues.append("Title was not confirmed by arXiv or Semantic Scholar")
+            issues.append("Title was not confirmed by arXiv, ACL Anthology, or Semantic Scholar")
         if citation.doi and "doi" not in passed_check_names:
-            issues.append("DOI was not confirmed by arXiv or Semantic Scholar")
+            issues.append("DOI was not confirmed by arXiv, ACL Anthology, or Semantic Scholar")
         if citation.url and "url" not in passed_check_names:
-            issues.append("URL was not confirmed by arXiv or Semantic Scholar")
+            issues.append("URL was not confirmed by arXiv, ACL Anthology, or Semantic Scholar")
         if citation.arxiv_id and "arxiv_id" not in passed_check_names:
             issues.append("arXiv ID was not confirmed by arXiv or Semantic Scholar")
+        if citation.acl_id and "acl_id" not in passed_check_names:
+            issues.append("ACL Anthology ID was not confirmed by ACL Anthology")
 
     def _add_issue(
         self,
@@ -641,6 +771,9 @@ class CitationVerifier:
         normalized = value.strip().replace("http://", "https://", 1).rstrip("/")
         return normalized.removesuffix(".pdf")
 
+    def _is_semantic_scholar_url(self, value: str) -> bool:
+        return "semanticscholar.org" in value.lower()
+
     def _normalize_arxiv_id(self, value: str) -> str:
         return value.strip().removeprefix("arXiv:").split("v")[0]
 
@@ -663,6 +796,13 @@ def citation_from_mapping(data: dict) -> Citation:
         arxiv_id=data.get("arxiv_id") or data.get("arxivId") or data.get("arxiv"),
         doi=data.get("doi"),
         semantic_scholar_id=data.get("semantic_scholar_id") or data.get("paperId"),
+        acl_id=(
+            data.get("acl_id")
+            or data.get("aclId")
+            or data.get("acl_anthology_id")
+            or data.get("aclAnthologyId")
+            or data.get("anthology_id")
+        ),
         url=data.get("url"),
         abstract=data.get("abstract") or data.get("abstract_excerpt"),
         venue=data.get("venue"),
@@ -688,6 +828,7 @@ def citation_to_mapping(citation: Citation) -> dict:
         "arxiv_id": citation.arxiv_id,
         "doi": citation.doi,
         "semantic_scholar_id": citation.semantic_scholar_id,
+        "acl_id": citation.acl_id,
         "url": citation.url,
         "abstract": citation.abstract,
         "venue": citation.venue,
@@ -735,6 +876,8 @@ def load_citations_bibtex(path: Path | str) -> list[Citation]:
         "keywords",
         "semanticscholarid",
         "paperid",
+        "aclid",
+        "anthologyid",
     }
     for entry_type, key, fields in entries:
         title = fields.get("title", "").strip()
@@ -764,6 +907,7 @@ def load_citations_bibtex(path: Path | str) -> list[Citation]:
                 arxiv_id=arxiv_id,
                 doi=fields.get("doi"),
                 semantic_scholar_id=fields.get("semanticscholarid") or fields.get("paperid"),
+                acl_id=fields.get("aclid") or fields.get("anthologyid"),
                 url=fields.get("url"),
                 abstract=fields.get("abstract"),
                 venue=venue,
@@ -903,6 +1047,8 @@ def render_verification_report(
             lines.append(f"- **arXiv:** {citation.arxiv_id}")
         if citation.doi:
             lines.append(f"- **DOI:** {citation.doi}")
+        if citation.acl_id:
+            lines.append(f"- **ACL Anthology:** {citation.acl_id}")
         if citation.url:
             lines.append(f"- **URL:** {citation.url}")
 
@@ -1145,4 +1291,6 @@ def _citation_id_summary(citation: Citation) -> str:
         ids.append(f"arXiv:{citation.arxiv_id}")
     if citation.doi:
         ids.append(f"DOI:{citation.doi}")
+    if citation.acl_id:
+        ids.append(f"ACL:{citation.acl_id}")
     return f" ({'; '.join(ids)})" if ids else ""

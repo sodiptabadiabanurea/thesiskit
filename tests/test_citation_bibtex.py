@@ -92,15 +92,13 @@ def test_load_citations_bibtex_preserves_extended_metadata_and_custom_fields(tmp
     assert citation.publisher == "Association for Computational Linguistics"
     assert citation.abstract == "A survey of retrieval-augmented generation systems."
     assert citation.semantic_scholar_id == "abcd1234"
+    assert citation.acl_id == "2023.findings-acl.123"
     assert citation.keywords == [
         "retrieval-augmented generation",
         "large language models",
         "survey",
     ]
-    assert citation.bibtex_fields == {
-        "aclid": "2023.findings-acl.123",
-        "note": "Reference-manager custom note",
-    }
+    assert citation.bibtex_fields == {"note": "Reference-manager custom note"}
 
 
 def test_load_citations_bibtex_preserves_non_arxiv_eprint_metadata(tmp_path):
