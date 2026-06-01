@@ -99,11 +99,24 @@ def copy_mini_run_example(output_dir: Path, overwrite: bool = False) -> Path:
     return output_dir
 
 
-def _build_verifier(verifier_factory, s2_api_key: str | None = None):
+def _build_verifier(
+    verifier_factory,
+    s2_api_key: str | None = None,
+    cache_dir: Path | None = None,
+    retry_attempts: int = 1,
+    retry_backoff_seconds: float = 0.0,
+):
     """Create a citation verifier while keeping tests injectable."""
+    kwargs: dict[str, Any] = {}
     if s2_api_key:
-        return verifier_factory(s2_api_key=s2_api_key)
-    return verifier_factory()
+        kwargs["s2_api_key"] = s2_api_key
+    if cache_dir is not None:
+        kwargs["cache_dir"] = cache_dir
+    if retry_attempts != 1:
+        kwargs["retry_attempts"] = retry_attempts
+    if retry_backoff_seconds != 0.0:
+        kwargs["retry_backoff_seconds"] = retry_backoff_seconds
+    return verifier_factory(**kwargs)
 
 
 def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier) -> int:
@@ -218,6 +231,24 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         help="Optional Semantic Scholar API key",
     )
     citation_verify_parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="Directory for reusable arXiv/Semantic Scholar metadata cache",
+    )
+    citation_verify_parser.add_argument(
+        "--retry-attempts",
+        type=int,
+        default=1,
+        help="Attempts per live metadata lookup before reporting an API failure",
+    )
+    citation_verify_parser.add_argument(
+        "--retry-backoff",
+        type=float,
+        default=0.0,
+        help="Initial retry backoff in seconds; doubles after each failed attempt",
+    )
+    citation_verify_parser.add_argument(
         "--allow-failures",
         action="store_true",
         help="Write the report but exit 0 even when citations fail verification",
@@ -323,7 +354,13 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         return 0
 
     elif args.command == "citations" and args.citation_command == "verify":
-        verifier = _build_verifier(verifier_factory, args.s2_api_key)
+        verifier = _build_verifier(
+            verifier_factory,
+            s2_api_key=args.s2_api_key,
+            cache_dir=args.cache_dir,
+            retry_attempts=args.retry_attempts,
+            retry_backoff_seconds=args.retry_backoff,
+        )
         try:
             results = verify_citations_json_file(args.input, args.output, verifier=verifier)
         except (FileNotFoundError, ValueError) as exc:

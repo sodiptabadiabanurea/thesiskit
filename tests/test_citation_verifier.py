@@ -1,5 +1,7 @@
 """Tests for citation verification reports."""
 
+import json
+
 from thesiskit.literature.citations import Citation, CitationVerifier, VerificationLevel
 
 
@@ -32,8 +34,28 @@ class FakeSemanticScholarClient:
 
 
 class RaisingArxivClient:
+    def __init__(self):
+        self.requested_ids = []
+
     def get_paper(self, arxiv_id):
+        self.requested_ids.append(arxiv_id)
         raise RuntimeError(f"network unavailable for {arxiv_id}")
+
+    def close(self):
+        pass
+
+
+class FlakyArxivClient:
+    def __init__(self, paper, failures_before_success=1):
+        self.paper = paper
+        self.failures_before_success = failures_before_success
+        self.requested_ids = []
+
+    def get_paper(self, arxiv_id):
+        self.requested_ids.append(arxiv_id)
+        if len(self.requested_ids) <= self.failures_before_success:
+            raise RuntimeError(f"temporary arXiv outage for {arxiv_id}")
+        return self.paper
 
     def close(self):
         pass
@@ -147,3 +169,70 @@ def test_verify_with_report_returns_issue_when_arxiv_lookup_fails():
     assert citation.verification_level == VerificationLevel.UNVERIFIED
     assert any("arxiv lookup failed" in issue.lower() for issue in result.issues)
     assert not any("was not found" in issue.lower() for issue in result.issues)
+
+
+def test_verify_with_report_retries_transient_arxiv_failures_before_reporting_success():
+    """Transient source errors should be retried before becoming report issues."""
+    arxiv_client = FlakyArxivClient(RAG_ARXIV_PAPER, failures_before_success=1)
+    verifier = CitationVerifier(
+        arxiv_client=arxiv_client,
+        semantic_scholar_client=FakeSemanticScholarClient(None),
+        retry_attempts=2,
+        retry_backoff_seconds=0,
+    )
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        arxiv_id="2005.11401",
+    )
+
+    result = verifier.verify_with_report(citation)
+
+    assert result.passed is True
+    assert arxiv_client.requested_ids == ["2005.11401", "2005.11401"]
+    assert not result.issues
+    assert result.checks_by_name["arxiv_id"].passed is True
+
+
+def test_verify_with_report_caches_arxiv_metadata_for_offline_reuse(tmp_path):
+    """A successful lookup should be reused from local cache without another API call."""
+    cache_dir = tmp_path / "metadata-cache"
+    first_arxiv_client = FakeArxivClient(RAG_ARXIV_PAPER)
+    first_verifier = CitationVerifier(
+        arxiv_client=first_arxiv_client,
+        semantic_scholar_client=FakeSemanticScholarClient(None),
+        cache_dir=cache_dir,
+    )
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        arxiv_id="2005.11401",
+    )
+
+    first_result = first_verifier.verify_with_report(citation)
+
+    assert first_result.passed is True
+    assert first_arxiv_client.requested_ids == ["2005.11401"]
+    cache_files = list((cache_dir / "arxiv").glob("*.json"))
+    assert len(cache_files) == 1
+    assert json.loads(cache_files[0].read_text(encoding="utf-8"))["title"] == RAG_ARXIV_PAPER[
+        "title"
+    ]
+
+    second_arxiv_client = RaisingArxivClient()
+    second_verifier = CitationVerifier(
+        arxiv_client=second_arxiv_client,
+        semantic_scholar_client=FakeSemanticScholarClient(None),
+        cache_dir=cache_dir,
+    )
+    second_citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        arxiv_id="2005.11401",
+    )
+
+    second_result = second_verifier.verify_with_report(second_citation)
+
+    assert second_result.passed is True
+    assert second_arxiv_client.requested_ids == []
+    assert not second_result.issues

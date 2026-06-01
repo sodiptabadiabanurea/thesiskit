@@ -51,6 +51,8 @@ jobs:
           python -m thesiskit.cli citations verify \
             --input "$tmpdir/mini-run/citations/papers.json" \
             --output "$tmpdir/generated-verification-report.md" \
+            --cache-dir "$tmpdir/metadata-cache" \
+            --retry-attempts 2 \
             --allow-failures
           test -f "$tmpdir/generated-verification-report.md"
           python -m thesiskit.cli citations export-bibtex \
