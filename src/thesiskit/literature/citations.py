@@ -1,10 +1,13 @@
 """Citation verification and management."""
 
 import json
+import math
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -40,6 +43,7 @@ class VerificationResult:
     level: VerificationLevel
     checks: list[VerificationCheck]
     issues: list[str]
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def checks_by_name(self) -> dict[str, VerificationCheck]:
@@ -218,6 +222,7 @@ class CitationVerifier:
         """
         checks: list[VerificationCheck] = []
         issues: list[str] = []
+        warnings: list[str] = []
         level = VerificationLevel.UNVERIFIED
 
         arxiv_paper = None
@@ -281,16 +286,16 @@ class CitationVerifier:
                 )
                 s2_paper = s2_lookup.paper
             except Exception as exc:  # pragma: no cover - defensive network guard
-                self._add_issue(
-                    checks,
-                    issues,
-                    name="semantic_scholar",
-                    source="semantic_scholar",
-                    detail=(
-                        f"Semantic Scholar lookup failed for {lookup_id} "
-                        f"after {self.retry_attempts} attempt(s): {exc}"
-                    ),
+                detail = self._semantic_scholar_lookup_warning(lookup_id, exc)
+                checks.append(
+                    VerificationCheck(
+                        name="semantic_scholar",
+                        source="semantic_scholar",
+                        passed=False,
+                        detail=detail,
+                    )
                 )
+                warnings.append(detail)
             if s2_paper:
                 source_note = " from cache" if s2_lookup.cache_hit else ""
                 checks.append(
@@ -338,6 +343,7 @@ class CitationVerifier:
             level=level,
             checks=checks,
             issues=issues,
+            warnings=warnings,
         )
 
     def close(self):
@@ -365,9 +371,10 @@ class CitationVerifier:
                 paper = fetcher()
             except Exception as exc:
                 last_exception = exc
-                if attempt < self.retry_attempts and self.retry_backoff_seconds > 0:
-                    delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
-                    self._sleep(delay)
+                if attempt < self.retry_attempts:
+                    delay = self._retry_delay_seconds(exc, attempt)
+                    if delay > 0:
+                        self._sleep(delay)
                 continue
 
             if self.cache is not None:
@@ -377,6 +384,49 @@ class CitationVerifier:
         if last_exception is not None:
             raise last_exception
         return _MetadataLookupResult(paper=None, cache_hit=False)
+
+    def _retry_delay_seconds(self, exc: Exception, attempt: int) -> float:
+        """Return retry delay, preferring HTTP Retry-After on rate limits."""
+        retry_after = self._retry_after_seconds(exc)
+        if retry_after is not None:
+            return retry_after
+        return self.retry_backoff_seconds * (2 ** (attempt - 1))
+
+    def _retry_after_seconds(self, exc: Exception) -> Optional[float]:
+        response = getattr(exc, "response", None)
+        if getattr(response, "status_code", None) != 429:
+            return None
+        headers = getattr(response, "headers", {}) or {}
+        value = headers.get("Retry-After") if hasattr(headers, "get") else None
+        if not value:
+            return None
+
+        try:
+            delay = float(value)
+        except (TypeError, ValueError):
+            try:
+                retry_at = parsedate_to_datetime(str(value))
+            except (TypeError, ValueError, IndexError, OverflowError):
+                return None
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
+
+        if not math.isfinite(delay):
+            return None
+        return min(max(0.0, delay), 30.0)
+
+    def _semantic_scholar_lookup_warning(self, lookup_id: str, exc: Exception) -> str:
+        problem = "rate-limited" if self._exception_status_code(exc) == 429 else "unavailable"
+        return (
+            f"Semantic Scholar lookup {problem} for {lookup_id} "
+            f"after {self.retry_attempts} attempt(s): {exc}"
+        )
+
+    def _exception_status_code(self, exc: Exception) -> Optional[int]:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        return status_code if isinstance(status_code, int) else None
 
     def __enter__(self):
         return self
@@ -561,8 +611,7 @@ def citation_from_mapping(data: dict) -> Citation:
 
     authors = data.get("authors") or []
     normalized_authors = [
-        author.get("name", "") if isinstance(author, dict) else str(author)
-        for author in authors
+        author.get("name", "") if isinstance(author, dict) else str(author) for author in authors
     ]
 
     return Citation(
@@ -697,6 +746,11 @@ def render_verification_report(
     total = len(results)
     passed = sum(1 for result in results if result.passed)
     failed = total - passed
+    warning_count = sum(len(result.warnings) for result in results)
+    status = f"{passed} passed / {failed} failed"
+    if warning_count:
+        warning_label = "warning" if warning_count == 1 else "warnings"
+        status = f"{status} / {warning_count} {warning_label}"
 
     lines = [
         "# Citation Verification Report",
@@ -707,7 +761,7 @@ def render_verification_report(
     lines.extend(
         [
             f"**Citations checked:** {total}",
-            f"**Status:** {passed} passed / {failed} failed",
+            f"**Status:** {status}",
             "",
             "## Summary",
             "",
@@ -719,7 +773,7 @@ def render_verification_report(
         return "\n".join(lines).rstrip() + "\n"
 
     for result in results:
-        icon = "✅" if result.passed else "❌"
+        icon = "❌" if not result.passed else "⚠️" if result.warnings else "✅"
         citation = result.citation
         ids = _citation_id_summary(citation)
         lines.append(f"- {icon} {citation.title} — {result.level.name}{ids}")
@@ -727,12 +781,17 @@ def render_verification_report(
     lines.extend(["", "## Per-citation detail", ""])
     for index, result in enumerate(results, start=1):
         citation = result.citation
-        icon = "✅" if result.passed else "❌"
+        icon = "❌" if not result.passed else "⚠️" if result.warnings else "✅"
+        detail_status = (
+            "failed"
+            if not result.passed
+            else "passed with warnings" if result.warnings else "passed"
+        )
         lines.extend(
             [
                 f"### [{index}] {icon} {citation.title}",
                 "",
-                f"- **Status:** {'passed' if result.passed else 'failed'}",
+                f"- **Status:** {detail_status}",
                 f"- **Verification level:** {result.level.name}",
             ]
         )
@@ -751,11 +810,14 @@ def render_verification_report(
         if result.checks:
             for check in result.checks:
                 check_status = "PASS" if check.passed else "FAIL"
-                lines.append(
-                    f"- `{check.name} / {check.source}: {check_status}` — {check.detail}"
-                )
+                lines.append(f"- `{check.name} / {check.source}: {check_status}` — {check.detail}")
         else:
             lines.append("- No source checks were performed.")
+
+        if result.warnings:
+            lines.extend(["", "#### Warnings", ""])
+            for warning in result.warnings:
+                lines.append(f"- {warning}")
 
         lines.extend(["", "#### Issues", ""])
         if result.issues:

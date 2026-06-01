@@ -33,6 +33,59 @@ class FakeSemanticScholarClient:
         self.closed = True
 
 
+class RetryAfterResponse:
+    status_code = 429
+    headers = {"Retry-After": "3"}
+
+
+class RetryAfterError(RuntimeError):
+    def __init__(self, message="too many requests"):
+        super().__init__(message)
+        self.response = RetryAfterResponse()
+
+
+class NanRetryAfterResponse:
+    status_code = 429
+    headers = {"Retry-After": "NaN"}
+
+
+class NanRetryAfterError(RuntimeError):
+    def __init__(self, message="too many requests"):
+        super().__init__(message)
+        self.response = NanRetryAfterResponse()
+
+
+class RaisingSemanticScholarClient:
+    def __init__(self, error=None):
+        self.error = error or RetryAfterError()
+        self.requested_ids = []
+        self.closed = False
+
+    def get_paper(self, lookup_id):
+        self.requested_ids.append(lookup_id)
+        raise self.error
+
+    def close(self):
+        self.closed = True
+
+
+class FlakySemanticScholarClient:
+    def __init__(self, paper, failures_before_success=1, error=None):
+        self.paper = paper
+        self.failures_before_success = failures_before_success
+        self.error = error or RetryAfterError()
+        self.requested_ids = []
+
+    def get_paper(self, lookup_id):
+        self.requested_ids.append(lookup_id)
+        if len(self.requested_ids) <= self.failures_before_success:
+            raise self.error
+        return self.paper
+
+    def close(self):
+        pass
+
+
 class RaisingArxivClient:
     def __init__(self):
         self.requested_ids = []
@@ -215,9 +268,9 @@ def test_verify_with_report_caches_arxiv_metadata_for_offline_reuse(tmp_path):
     assert first_arxiv_client.requested_ids == ["2005.11401"]
     cache_files = list((cache_dir / "arxiv").glob("*.json"))
     assert len(cache_files) == 1
-    assert json.loads(cache_files[0].read_text(encoding="utf-8"))["title"] == RAG_ARXIV_PAPER[
-        "title"
-    ]
+    assert (
+        json.loads(cache_files[0].read_text(encoding="utf-8"))["title"] == RAG_ARXIV_PAPER["title"]
+    )
 
     second_arxiv_client = RaisingArxivClient()
     second_verifier = CitationVerifier(
@@ -236,6 +289,103 @@ def test_verify_with_report_caches_arxiv_metadata_for_offline_reuse(tmp_path):
     assert second_result.passed is True
     assert second_arxiv_client.requested_ids == []
     assert not second_result.issues
+
+
+def test_verify_with_report_treats_semantic_scholar_rate_limit_as_warning_when_arxiv_confirms_required_metadata():
+    """S2 outages should not fail a citation already confirmed by arXiv metadata."""
+    verifier = CitationVerifier(
+        arxiv_client=FakeArxivClient(RAG_ARXIV_PAPER),
+        semantic_scholar_client=RaisingSemanticScholarClient(),
+    )
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        arxiv_id="2005.11401",
+        url="https://arxiv.org/abs/2005.11401",
+    )
+
+    result = verifier.verify_with_report(citation)
+
+    assert result.passed is True
+    assert result.issues == []
+    assert any(
+        "Semantic Scholar" in warning and "rate" in warning.lower() for warning in result.warnings
+    )
+    assert result.checks_by_name["semantic_scholar"].passed is False
+    assert citation.verification_level == VerificationLevel.FULLY_VERIFIED
+
+
+def test_verify_with_report_still_fails_when_only_semantic_scholar_is_rate_limited():
+    """S2 outages are warnings, but they do not manufacture verification evidence."""
+    verifier = CitationVerifier(
+        arxiv_client=FakeArxivClient(None),
+        semantic_scholar_client=RaisingSemanticScholarClient(),
+    )
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        doi="10.48550/arXiv.2005.11401",
+    )
+
+    result = verifier.verify_with_report(citation)
+
+    assert result.passed is False
+    assert citation.verification_level == VerificationLevel.UNVERIFIED
+    assert any("Semantic Scholar" in warning for warning in result.warnings)
+    assert any("Title was not confirmed" in issue for issue in result.issues)
+    assert any("DOI was not confirmed" in issue for issue in result.issues)
+
+
+def test_verify_with_report_honors_retry_after_header_before_retrying_s2_lookup():
+    """HTTP 429 retry hints should drive retry sleep before generic backoff."""
+    slept = []
+    s2_client = FlakySemanticScholarClient(RAG_S2_PAPER, failures_before_success=1)
+    verifier = CitationVerifier(
+        arxiv_client=FakeArxivClient(RAG_ARXIV_PAPER),
+        semantic_scholar_client=s2_client,
+        retry_attempts=2,
+        retry_backoff_seconds=0.25,
+        sleep_func=slept.append,
+    )
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        arxiv_id="2005.11401",
+    )
+
+    result = verifier.verify_with_report(citation)
+
+    assert result.passed is True
+    assert slept == [3.0]
+    assert s2_client.requested_ids == ["ARXIV:2005.11401", "ARXIV:2005.11401"]
+    assert not result.warnings
+
+
+def test_verify_with_report_ignores_non_finite_retry_after_values():
+    """Malformed Retry-After values should fall back to generic backoff."""
+    slept = []
+    s2_client = FlakySemanticScholarClient(
+        RAG_S2_PAPER,
+        failures_before_success=1,
+        error=NanRetryAfterError(),
+    )
+    verifier = CitationVerifier(
+        arxiv_client=FakeArxivClient(RAG_ARXIV_PAPER),
+        semantic_scholar_client=s2_client,
+        retry_attempts=2,
+        retry_backoff_seconds=0.25,
+        sleep_func=slept.append,
+    )
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+        authors=[],
+        arxiv_id="2005.11401",
+    )
+
+    result = verifier.verify_with_report(citation)
+
+    assert result.passed is True
+    assert slept == [0.25]
 
 
 def test_verifier_passes_custom_arxiv_base_url_to_default_client(monkeypatch):
