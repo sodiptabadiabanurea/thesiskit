@@ -51,3 +51,32 @@ def test_arxiv_client_init(mock_client):
     client = ArxivClient(timeout=60.0)
     assert client.BASE_URL == "https://export.arxiv.org/api/query"
     client.close()
+
+
+@patch("httpx.Client")
+def test_arxiv_client_uses_custom_base_url(mock_client):
+    """Users should be able to route arXiv metadata through a cache proxy."""
+    client = ArxivClient(base_url="https://arxiv-cache.example.workers.dev/api/query")
+    mock_response = mock_client.return_value.get.return_value
+    mock_response.text = '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+    client.search("id:2005.11401", max_results=1)
+
+    mock_client.return_value.get.assert_called_once()
+    called_url = mock_client.return_value.get.call_args.args[0]
+    assert called_url == "https://arxiv-cache.example.workers.dev/api/query"
+    assert mock_client.return_value.get.call_args.kwargs["params"]["search_query"] == "id:2005.11401"
+    client.close()
+
+
+@patch("httpx.Client")
+def test_arxiv_client_rejects_blank_base_url(mock_client):
+    """Whitespace-only proxy endpoints should fail fast before httpx sees them."""
+    try:
+        ArxivClient(base_url="   ")
+    except ValueError as exc:
+        assert "base_url" in str(exc)
+    else:  # pragma: no cover - explicit failure branch
+        raise AssertionError("Expected blank base_url to raise ValueError")
+
+    mock_client.assert_not_called()
