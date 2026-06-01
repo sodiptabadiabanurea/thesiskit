@@ -1,6 +1,5 @@
 """Tests for experiment sandbox."""
 
-import pytest
 from thesiskit.experiment import Sandbox, check_code_safety
 
 

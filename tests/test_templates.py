@@ -1,6 +1,6 @@
 """Tests for templates."""
 
-from thesiskit.templates import Conference, generate_latex, markdown_to_latex
+from thesiskit.templates import Conference, markdown_to_latex
 
 
 def test_conference_enum():

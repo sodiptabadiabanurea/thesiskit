@@ -1,7 +1,6 @@
 """Tests for ThesisKit config."""
 
-import pytest
-from thesiskit.config import Config, LLMConfig, ExperimentConfig
+from thesiskit.config import Config, LLMConfig
 
 
 def test_default_config():

@@ -75,7 +75,7 @@ def main():
         if args.config.exists():
             config = Config.from_yaml(args.config)
         else:
-            console.print(f"[yellow]Config not found, using defaults[/yellow]")
+            console.print("[yellow]Config not found, using defaults[/yellow]")
             config = Config()
         
         # Run pipeline
@@ -100,14 +100,14 @@ def main():
         (project_dir / "references").mkdir(exist_ok=True)
         
         console.print(f"[green]Created project: {args.name}[/green]")
-        console.print(f"  - config.yaml")
-        console.print(f"  - artifacts/")
-        console.print(f"  - references/")
+        console.print("  - config.yaml")
+        console.print("  - artifacts/")
+        console.print("  - references/")
     
     elif args.command == "validate":
         if args.config.exists():
             config = Config.from_yaml(args.config)
-            console.print(f"[green]✓ Config is valid[/green]")
+            console.print("[green]✓ Config is valid[/green]")
             console.print(f"  Topic: {config.research.topic or '(not set)'}")
             console.print(f"  LLM: {config.llm.provider} / {config.llm.primary_model}")
         else:

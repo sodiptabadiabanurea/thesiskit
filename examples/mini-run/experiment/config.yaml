@@ -1,0 +1,39 @@
+experiment:
+  name: mini-run-rag-team-questions
+  description: >
+    Deterministic synthetic experiment that contrasts a no-retrieval baseline
+    against a naive RAG variant on a tiny, hand-crafted question set.
+    Intended purely as a demo of ThesisKit's experiment artifact format.
+    Numbers are illustrative and are NOT a benchmark result.
+  seed: 42
+  dataset: synthetic_rag_team_questions_v1
+  dataset_notes: >
+    20 short factoid questions about a fictional 4-person research team's
+    internal RAG workflow. Ground-truth answers are generated from a small
+    YAML "team knowledge base" included with the dataset, so retrieval
+    can be evaluated without any live model call.
+
+  conditions:
+    - id: baseline
+      description: Closed-book LLM with no retrieval.
+      retriever: none
+    - id: rag
+      description: Naive RAG — top-3 BM25 retrieval over the team knowledge base.
+      retriever: bm25
+      top_k: 3
+
+  metrics:
+    - rag_answer_accuracy
+    - baseline_answer_accuracy
+    - citation_coverage
+    - retrieval_recall_at_3
+
+  reproducibility:
+    python: ">=3.10"
+    deterministic: true
+    requires_network: false
+    notes: >
+      The "results.json" in this directory is checked in. It was produced by a
+      deterministic stub; re-running ThesisKit's real experiment sandbox on the
+      same seed and dataset will produce equivalent numbers up to floating
+      point noise.

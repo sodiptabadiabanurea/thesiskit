@@ -1,7 +1,6 @@
 """Tests for literature clients."""
 
-import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from thesiskit.literature.arxiv import ArxivClient
 from thesiskit.literature.citations import Citation, VerificationLevel
 
