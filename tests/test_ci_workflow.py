@@ -18,6 +18,8 @@ def test_ci_workflow_runs_project_quality_gates():
         "python -m twine check dist/*",
         'python -m thesiskit.cli example mini-run --output "$tmpdir/mini-run"',
         "python -m thesiskit.cli citations verify",
+        "python -m thesiskit.cli citations export-bibtex",
+        "python -m thesiskit.cli citations import-bibtex",
         '--input "$tmpdir/mini-run/citations/papers.json"',
         '--output "$tmpdir/generated-verification-report.md"',
         "--allow-failures",

@@ -36,10 +36,18 @@ thesiskit example mini-run --output artifacts/mini-run
 thesiskit citations verify \
   --input artifacts/mini-run/citations/papers.json \
   --output artifacts/mini-run/citations/verification_report.md
+thesiskit citations export-bibtex \
+  --input artifacts/mini-run/citations/papers.json \
+  --output artifacts/mini-run/citations/references.bib
+thesiskit citations import-bibtex \
+  --input artifacts/mini-run/citations/references.bib \
+  --output artifacts/mini-run/citations/imported_papers.json
 ```
 
 The verifier exits nonzero if any citation fails; add `--allow-failures` when you
-want an audit report even for a known-bad citation set.
+want an audit report even for a known-bad citation set. The BibTeX commands move
+the common bibliographic fields between ThesisKit's auditable `papers.json`
+metadata and reference managers without editing files by hand.
 
 > **Alpha status:** ThesisKit is actively developed. The checked-in tests and
 > `examples/mini-run/` demonstrate the current artifact shape, but the project
@@ -80,13 +88,20 @@ The experiment in the example is intentionally synthetic and deterministic
 (`seed: 42`). It is meant to show the output schema and verification gates, not
 to claim a benchmark result.
 
-You can copy the whole bundle and regenerate a live verification report with:
+You can copy the whole bundle, regenerate a live verification report, and export
+then re-import the common BibTeX citation subset with:
 
 ```bash
 thesiskit example mini-run --output artifacts/mini-run
 thesiskit citations verify \
   --input artifacts/mini-run/citations/papers.json \
   --output artifacts/mini-run/citations/verification_report.md
+thesiskit citations export-bibtex \
+  --input artifacts/mini-run/citations/papers.json \
+  --output artifacts/mini-run/citations/references.bib
+thesiskit citations import-bibtex \
+  --input artifacts/mini-run/citations/references.bib \
+  --output artifacts/mini-run/citations/imported_papers.json
 ```
 
 ## How it works
@@ -129,6 +144,7 @@ The pipeline is organized as **8 phases / 20 stages**:
 |---|---|
 | arXiv, Semantic Scholar, and citation verification data structures | Broader source support such as PubMed and ACL Anthology |
 | Citation verifier for arXiv ID, DOI, URL, and title matching | Stronger automated relevance scoring and deduplication |
+| BibTeX import/export CLI for `papers.json` citation metadata | Richer BibTeX field preservation for abstracts, venues, and custom IDs |
 | Experiment sandbox primitives | Hardened Docker/Firecracker-style isolation |
 | NeurIPS, ICML, and ICLR template modules | Additional templates such as ACL, EMNLP, CVPR, AAAI |
 | Multi-agent review scaffolding | Human-in-the-loop review gates and web dashboard |
