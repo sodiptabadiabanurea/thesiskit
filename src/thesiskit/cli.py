@@ -10,7 +10,14 @@ from rich.console import Console
 
 from thesiskit import __version__
 from thesiskit.config import Config
-from thesiskit.literature.citations import CitationVerifier, verify_citations_json_file
+from thesiskit.literature.citations import (
+    CitationVerifier,
+    load_citations_bibtex,
+    load_citations_json,
+    verify_citations_json_file,
+    write_citations_bibtex,
+    write_citations_json,
+)
 from thesiskit.pipeline.runner import run_pipeline
 
 console = Console()
@@ -215,6 +222,42 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         action="store_true",
         help="Write the report but exit 0 even when citations fail verification",
     )
+    citation_export_parser = citation_subparsers.add_parser(
+        "export-bibtex",
+        help="Export papers.json citations to BibTeX",
+    )
+    citation_export_parser.add_argument(
+        "--input",
+        "-i",
+        type=Path,
+        default=Path("citations/papers.json"),
+        help="Path to a JSON list of citation metadata",
+    )
+    citation_export_parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=Path("citations/references.bib"),
+        help="Path for the generated BibTeX file",
+    )
+    citation_import_parser = citation_subparsers.add_parser(
+        "import-bibtex",
+        help="Import BibTeX references into papers.json",
+    )
+    citation_import_parser.add_argument(
+        "--input",
+        "-i",
+        type=Path,
+        default=Path("citations/references.bib"),
+        help="Path to a BibTeX references file",
+    )
+    citation_import_parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=Path("citations/papers.json"),
+        help="Path for the generated JSON citation metadata",
+    )
     
     args = parser.parse_args(argv)
     
@@ -298,6 +341,26 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         else:
             console.print(f"[green]✓ Citation verification: {passed} passed / 0 failed[/green]")
         return 0 if failed == 0 or args.allow_failures else 1
+
+    elif args.command == "citations" and args.citation_command == "export-bibtex":
+        try:
+            citations = load_citations_json(args.input)
+            write_citations_bibtex(citations, args.output)
+        except (FileNotFoundError, ValueError) as exc:
+            console.print(f"[red]✗ {exc}[/red]")
+            return 1
+        console.print(f"[green]Wrote BibTeX references to {args.output}[/green]")
+        return 0
+
+    elif args.command == "citations" and args.citation_command == "import-bibtex":
+        try:
+            citations = load_citations_bibtex(args.input)
+            write_citations_json(citations, args.output)
+        except (FileNotFoundError, ValueError) as exc:
+            console.print(f"[red]✗ {exc}[/red]")
+            return 1
+        console.print(f"[green]Wrote citation metadata to {args.output}[/green]")
+        return 0
 
     elif args.command == "citations":
         citations_parser.print_help()

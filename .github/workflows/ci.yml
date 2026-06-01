@@ -53,3 +53,11 @@ jobs:
             --output "$tmpdir/generated-verification-report.md" \
             --allow-failures
           test -f "$tmpdir/generated-verification-report.md"
+          python -m thesiskit.cli citations export-bibtex \
+            --input "$tmpdir/mini-run/citations/papers.json" \
+            --output "$tmpdir/exported-references.bib"
+          test -f "$tmpdir/exported-references.bib"
+          python -m thesiskit.cli citations import-bibtex \
+            --input "$tmpdir/exported-references.bib" \
+            --output "$tmpdir/imported-papers.json"
+          test -f "$tmpdir/imported-papers.json"

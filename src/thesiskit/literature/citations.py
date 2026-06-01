@@ -463,6 +463,93 @@ def citation_from_mapping(data: dict) -> Citation:
     )
 
 
+def citation_to_mapping(citation: Citation) -> dict:
+    """Convert a Citation into a stable JSON-friendly metadata mapping."""
+    data: dict = {
+        "title": citation.title,
+        "authors": citation.authors,
+    }
+    optional_fields = {
+        "year": citation.year,
+        "arxiv_id": citation.arxiv_id,
+        "doi": citation.doi,
+        "semantic_scholar_id": citation.semantic_scholar_id,
+        "url": citation.url,
+        "abstract": citation.abstract,
+        "citation_count": citation.citation_count,
+    }
+    data.update({key: value for key, value in optional_fields.items() if value is not None})
+    return data
+
+
+def load_citations_bibtex(path: Path | str) -> list[Citation]:
+    """Load Citation objects from a BibTeX file.
+
+    This intentionally supports the common subset ThesisKit exports and the
+    mini-run example uses: title, author, year, eprint/archivePrefix, doi, and
+    url. Unknown fields are ignored instead of making import brittle. Protective
+    case braces such as `{NLP}` are stripped while TeX escape groups are kept.
+    """
+    source_path = Path(path)
+    entries = _parse_bibtex_entries(source_path.read_text(encoding="utf-8"))
+    citations: list[Citation] = []
+    for _entry_type, _key, fields in entries:
+        title = fields.get("title", "").strip()
+        if not title:
+            raise ValueError("BibTeX entry is missing required field: title")
+
+        authors = [author.strip() for author in fields.get("author", "").split(" and ")]
+        year = _parse_year(fields.get("year"))
+        archive_prefix = fields.get("archiveprefix", "").lower()
+        eprint = fields.get("eprint")
+        arxiv_id = eprint if eprint and archive_prefix == "arxiv" else None
+        citations.append(
+            Citation(
+                title=title,
+                authors=[author for author in authors if author],
+                year=year,
+                arxiv_id=arxiv_id,
+                doi=fields.get("doi"),
+                url=fields.get("url"),
+            )
+        )
+    return citations
+
+
+def citations_to_bibtex(citations: list[Citation]) -> str:
+    """Render citations as deterministic BibTeX text."""
+    used_keys: set[str] = set()
+    entries = []
+    for index, citation in enumerate(citations, start=1):
+        key = _bibtex_key(citation, index=index)
+        base_key = key
+        suffix = 2
+        while key in used_keys:
+            key = f"{base_key}{suffix}"
+            suffix += 1
+        used_keys.add(key)
+        entries.append(citation.to_bibtex(key))
+    return "\n\n".join(entries).rstrip() + "\n"
+
+
+def write_citations_bibtex(citations: list[Citation], path: Path | str) -> None:
+    """Write Citation objects to a UTF-8 BibTeX file."""
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(citations_to_bibtex(citations), encoding="utf-8")
+
+
+def write_citations_json(citations: list[Citation], path: Path | str) -> None:
+    """Write Citation objects to a UTF-8 papers.json file."""
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    data = [citation_to_mapping(citation) for citation in citations]
+    destination.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def load_citations_json(path: Path | str) -> list[Citation]:
     """Load a list of Citation objects from a papers.json-style file."""
     source_path = Path(path)
@@ -581,6 +668,143 @@ def verify_citations_json_file(
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(report, encoding="utf-8")
     return results
+
+
+def _parse_bibtex_entries(text: str) -> list[tuple[str, str, dict[str, str]]]:
+    """Parse BibTeX entries into entry type, key, and cleaned fields."""
+    entries: list[tuple[str, str, dict[str, str]]] = []
+    position = 0
+    while True:
+        at_position = text.find("@", position)
+        if at_position == -1:
+            break
+        type_start = at_position + 1
+        opener_position = _find_next_any(text, "{(", start=type_start)
+        if opener_position == -1:
+            break
+        entry_type = text[type_start:opener_position].strip().lower()
+        if entry_type in {"comment", "preamble", "string"}:
+            position = opener_position + 1
+            continue
+
+        opener = text[opener_position]
+        closer = "}" if opener == "{" else ")"
+        body, position = _read_balanced(text, opener_position, opener, closer)
+        key, fields_text = _split_key_and_fields(body)
+        entries.append((entry_type, key, _parse_bibtex_fields(fields_text)))
+    return entries
+
+
+def _find_next_any(text: str, needles: str, start: int) -> int:
+    positions = [text.find(needle, start) for needle in needles]
+    positions = [position for position in positions if position != -1]
+    return min(positions) if positions else -1
+
+
+def _read_balanced(text: str, start: int, opener: str, closer: str) -> tuple[str, int]:
+    depth = 0
+    body_start = start + 1
+    index = start
+    while index < len(text):
+        char = text[index]
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return text[body_start:index], index + 1
+        index += 1
+    raise ValueError("Unclosed BibTeX entry")
+
+
+def _split_key_and_fields(body: str) -> tuple[str, str]:
+    comma = _find_top_level_comma(body)
+    if comma == -1:
+        return body.strip(), ""
+    return body[:comma].strip(), body[comma + 1 :]
+
+
+def _find_top_level_comma(text: str) -> int:
+    depth = 0
+    for index, char in enumerate(text):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            return index
+    return -1
+
+
+def _parse_bibtex_fields(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    position = 0
+    while position < len(text):
+        while position < len(text) and (text[position].isspace() or text[position] == ","):
+            position += 1
+        name_start = position
+        while position < len(text) and (text[position].isalnum() or text[position] in "_-"):
+            position += 1
+        name = text[name_start:position].strip().lower()
+        if not name:
+            break
+        while position < len(text) and text[position].isspace():
+            position += 1
+        if position >= len(text) or text[position] != "=":
+            break
+        position += 1
+        while position < len(text) and text[position].isspace():
+            position += 1
+        value, position = _read_bibtex_value(text, position)
+        fields[name] = _clean_bibtex_value(value)
+    return fields
+
+
+def _read_bibtex_value(text: str, start: int) -> tuple[str, int]:
+    if start >= len(text):
+        return "", start
+    if text[start] == "{":
+        return _read_balanced(text, start, "{", "}")
+    if text[start] == '"':
+        index = start + 1
+        while index < len(text):
+            if text[index] == '"' and text[index - 1] != "\\":
+                return text[start + 1 : index], index + 1
+            index += 1
+        raise ValueError("Unclosed quoted BibTeX value")
+
+    comma = text.find(",", start)
+    if comma == -1:
+        return text[start:].strip(), len(text)
+    return text[start:comma].strip(), comma + 1
+
+
+def _clean_bibtex_value(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", value.strip())
+    return re.sub(r"\{([^{}\\]+)\}", r"\1", cleaned)
+
+
+def _parse_year(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    match = re.search(r"\d{4}", value)
+    return int(match.group(0)) if match else None
+
+
+def _bibtex_key(citation: Citation, index: int) -> str:
+    surname = "citation"
+    if citation.authors:
+        surname_tokens = re.findall(r"[A-Za-z0-9]+", citation.authors[0])
+        if surname_tokens:
+            surname = surname_tokens[-1].lower()
+    year = str(citation.year or "noyear")
+    title_tokens = [token.lower() for token in re.findall(r"[A-Za-z0-9]+", citation.title)]
+    title_part = f"item{index}"
+    if title_tokens:
+        title_part = title_tokens[0]
+        if title_part in {"a", "an", "and", "for", "in", "of", "on", "the", "to"}:
+            title_part += title_tokens[1] if len(title_tokens) > 1 else ""
+    return f"{surname}{year}{title_part}"
 
 
 def _citation_id_summary(citation: Citation) -> str:
