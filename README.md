@@ -187,6 +187,7 @@ The pipeline is organized as **8 phases / 20 stages**:
 | arXiv, Semantic Scholar, and citation verification data structures | Broader source support such as PubMed and ACL Anthology |
 | Citation verifier for arXiv ID, DOI, URL, and title matching with optional local metadata cache/retry | Stronger automated relevance scoring and deduplication |
 | BibTeX import/export CLI for `papers.json` citation metadata, including abstract, venue, publisher, keywords, keys, and custom field preservation | Richer CSL/EndNote/RIS import/export beyond BibTeX |
+| Deterministic 20-stage local runner with one JSON artifact per stage and approval-gate blocking | LLM/tool-backed stage implementations and dashboard approvals |
 | Experiment sandbox primitives | Hardened Docker/Firecracker-style isolation |
 | NeurIPS, ICML, and ICLR template modules | Additional templates such as ACL, EMNLP, CVPR, AAAI |
 | Multi-agent review scaffolding | Human-in-the-loop review gates and web dashboard |
