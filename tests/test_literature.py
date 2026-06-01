@@ -14,7 +14,7 @@ def test_citation_to_bibtex():
         arxiv_id="2401.12345",
         doi="10.1234/test",
     )
-    
+
     bibtex = citation.to_bibtex("test2024")
     assert "@article{test2024," in bibtex
     assert "title = {Test Paper}" in bibtex
@@ -32,7 +32,7 @@ def test_citation_to_markdown():
         url="https://example.com/paper",
         abstract="This is a test abstract.",
     )
-    
+
     md = citation.to_markdown()
     assert "# [Test Paper](https://example.com/paper)" in md
     assert "John Doe" in md
@@ -65,7 +65,9 @@ def test_arxiv_client_uses_custom_base_url(mock_client):
     mock_client.return_value.get.assert_called_once()
     called_url = mock_client.return_value.get.call_args.args[0]
     assert called_url == "https://arxiv-cache.example.workers.dev/api/query"
-    assert mock_client.return_value.get.call_args.kwargs["params"]["search_query"] == "id:2005.11401"
+    assert (
+        mock_client.return_value.get.call_args.kwargs["params"]["search_query"] == "id:2005.11401"
+    )
     client.close()
 
 

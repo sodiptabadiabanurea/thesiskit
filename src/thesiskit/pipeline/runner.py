@@ -31,50 +31,50 @@ def run_pipeline(
     output_dir: Optional[Path] = None,
 ) -> dict:
     """Run the full ThesisKit pipeline.
-    
+
     Args:
         config: Configuration object
         topic: Research topic (overrides config)
         auto_approve: Auto-approve gate stages
         output_dir: Output directory for artifacts
-        
+
     Returns:
         Pipeline summary dict
     """
     # Setup
     if topic:
         config.research.topic = topic
-    
+
     if not config.research.topic:
         raise ValueError("Research topic is required")
-    
+
     run_id = _generate_run_id()
     output_dir = output_dir or Path("artifacts") / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     console.print("\n[bold blue]ThesisKit Pipeline[/bold blue]")
     console.print(f"Run ID: {run_id}")
     console.print(f"Topic: {config.research.topic}")
     console.print(f"Output: {output_dir}")
     console.print(f"Auto-approve: {auto_approve}\n")
-    
+
     results = {
         "run_id": run_id,
         "topic": config.research.topic,
         "stages": [],
         "started_at": _utcnow_iso(),
     }
-    
+
     # Run stages
     for stage in Stage:
         phase = get_phase(stage)
         gate = is_gate(stage)
-        
+
         console.print(f"[dim]{phase}[/dim] → Stage {stage.value:2d}: {stage.name}")
-        
+
         # TODO: Implement actual stage execution
         # For now, just log the stage
-        
+
         stage_result = {
             "stage": stage.value,
             "name": stage.name,
@@ -82,19 +82,19 @@ def run_pipeline(
             "is_gate": gate,
             "status": "pending",
         }
-        
+
         results["stages"].append(stage_result)
-    
+
     # Finalize
     results["completed_at"] = _utcnow_iso()
     results["final_status"] = "completed"
-    
+
     # Write summary
     summary_path = output_dir / "pipeline_summary.json"
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
-    
+
     console.print("\n[bold green]Pipeline complete![/bold green]")
     console.print(f"Summary: {summary_path}")
-    
+
     return results

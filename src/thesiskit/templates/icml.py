@@ -45,13 +45,13 @@ def generate_icml_latex(
     body: str,
 ) -> str:
     """Generate ICML 2026 LaTeX from content.
-    
+
     Args:
         title: Paper title
         authors: Author string
         abstract: Abstract text
         body: Main body (sections, etc.)
-        
+
     Returns:
         Complete LaTeX document
     """

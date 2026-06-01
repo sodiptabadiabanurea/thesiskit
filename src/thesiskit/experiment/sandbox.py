@@ -11,6 +11,7 @@ from dataclasses import dataclass
 @dataclass
 class ExperimentResult:
     """Result of experiment execution."""
+
     success: bool
     output: str
     error: Optional[str] = None
@@ -21,7 +22,7 @@ class ExperimentResult:
 
 class Sandbox:
     """Sandbox for executing experiment code."""
-    
+
     def __init__(
         self,
         python_path: str = "python3",
@@ -33,25 +34,25 @@ class Sandbox:
         self.timeout = timeout
         self.max_memory_mb = max_memory_mb
         self.workdir = workdir or Path(tempfile.mkdtemp(prefix="thesiskit_sandbox_"))
-    
+
     def run(
         self,
         code: str,
         capture_output: bool = True,
     ) -> ExperimentResult:
         """Run code in sandbox.
-        
+
         Args:
             code: Python code to execute
             capture_output: Whether to capture stdout/stderr
-            
+
         Returns:
             ExperimentResult with execution results
         """
         # Write code to temp file
         code_file = self.workdir / "experiment.py"
         code_file.write_text(code)
-        
+
         try:
             # Run with resource limits
             result = subprocess.run(
@@ -61,7 +62,7 @@ class Sandbox:
                 text=True,
                 timeout=self.timeout,
             )
-            
+
             # Check for errors
             if result.returncode != 0:
                 return ExperimentResult(
@@ -71,19 +72,18 @@ class Sandbox:
                     stdout=result.stdout,
                     stderr=result.stderr,
                 )
-            
+
             # Try to parse metrics from output
             metrics = None
             if "METRICS:" in result.stdout:
                 try:
                     metrics_line = [
-                        line for line in result.stdout.split("\n")
-                        if line.startswith("METRICS:")
+                        line for line in result.stdout.split("\n") if line.startswith("METRICS:")
                     ][0]
                     metrics = json.loads(metrics_line[8:].strip())
                 except (IndexError, json.JSONDecodeError):
                     pass
-            
+
             return ExperimentResult(
                 success=True,
                 output=result.stdout,
@@ -91,21 +91,21 @@ class Sandbox:
                 stdout=result.stdout,
                 stderr=result.stderr,
             )
-        
+
         except subprocess.TimeoutExpired:
             return ExperimentResult(
                 success=False,
                 output="",
                 error=f"Execution timed out after {self.timeout}s",
             )
-        
+
         except Exception as e:
             return ExperimentResult(
                 success=False,
                 output="",
                 error=str(e),
             )
-    
+
     def run_with_requirements(
         self,
         code: str,
@@ -119,32 +119,33 @@ class Sandbox:
                 capture_output=True,
                 text=True,
             )
-            
+
             if pip_result.returncode != 0:
                 return ExperimentResult(
                     success=False,
                     output="",
                     error=f"Failed to install requirements: {pip_result.stderr}",
                 )
-        
+
         return self.run(code)
-    
+
     def cleanup(self):
         """Clean up sandbox directory."""
         import shutil
+
         if self.workdir.exists():
             shutil.rmtree(self.workdir)
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         self.cleanup()
 
 
 def check_code_safety(code: str) -> tuple[bool, str]:
     """Check if code is safe to run.
-    
+
     Returns:
         Tuple of (is_safe, reason)
     """
@@ -161,9 +162,9 @@ def check_code_safety(code: str) -> tuple[bool, str]:
         "input(",
         "raw_input(",
     ]
-    
+
     for pattern in dangerous:
         if pattern in code:
             return False, f"Potentially dangerous pattern found: {pattern}"
-    
+
     return True, "Code appears safe"

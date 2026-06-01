@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MINI_RUN = ROOT / "examples" / "mini-run"
 
@@ -47,5 +46,7 @@ def test_mini_run_experiment_records_reproducible_metrics():
 
     assert results["dataset"] == "synthetic_rag_team_questions_v1"
     assert results["seed"] == 42
-    assert results["metrics"]["rag_answer_accuracy"] > results["metrics"]["baseline_answer_accuracy"]
+    assert (
+        results["metrics"]["rag_answer_accuracy"] > results["metrics"]["baseline_answer_accuracy"]
+    )
     assert results["metrics"]["citation_coverage"] >= 0.9

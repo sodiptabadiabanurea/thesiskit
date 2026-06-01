@@ -8,7 +8,6 @@ import pytest
 
 from thesiskit.cli import copy_mini_run_example
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

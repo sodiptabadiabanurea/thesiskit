@@ -7,7 +7,7 @@ import os
 
 class LLMClient(ABC):
     """Base class for LLM clients."""
-    
+
     @abstractmethod
     def generate(
         self,
@@ -18,7 +18,7 @@ class LLMClient(ABC):
     ) -> str:
         """Generate text from prompt."""
         pass
-    
+
     @abstractmethod
     def generate_json(
         self,
@@ -31,7 +31,7 @@ class LLMClient(ABC):
 
 class OpenAIClient(LLMClient):
     """OpenAI-compatible client."""
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -42,11 +42,12 @@ class OpenAIClient(LLMClient):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self._client = None
-    
+
     def _get_client(self):
         """Lazy init httpx client."""
         if self._client is None:
             import httpx
+
             self._client = httpx.Client(
                 base_url=self.base_url,
                 headers={
@@ -56,7 +57,7 @@ class OpenAIClient(LLMClient):
                 timeout=120.0,
             )
         return self._client
-    
+
     def generate(
         self,
         prompt: str,
@@ -66,12 +67,12 @@ class OpenAIClient(LLMClient):
     ) -> str:
         """Generate text from prompt."""
         client = self._get_client()
-        
+
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        
+
         response = client.post(
             "/chat/completions",
             json={
@@ -82,10 +83,10 @@ class OpenAIClient(LLMClient):
             },
         )
         response.raise_for_status()
-        
+
         data = response.json()
         return data["choices"][0]["message"]["content"]
-    
+
     def generate_json(
         self,
         prompt: str,
@@ -93,13 +94,13 @@ class OpenAIClient(LLMClient):
     ) -> dict:
         """Generate JSON from prompt."""
         import json
-        
+
         text = self.generate(
             prompt=prompt,
             system=system,
             temperature=0.3,  # Lower temp for structured output
         )
-        
+
         # Extract JSON from response
         try:
             # Try direct parse
@@ -115,22 +116,22 @@ class OpenAIClient(LLMClient):
                 end = text.find("```", start)
                 return json.loads(text[start:end].strip())
             raise
-    
+
     def close(self):
         """Close client."""
         if self._client:
             self._client.close()
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         self.close()
 
 
 class GLMClient(OpenAIClient):
     """GLM (Zhipu AI) client."""
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,

@@ -45,13 +45,13 @@ def generate_neurips_latex(
     body: str,
 ) -> str:
     """Generate NeurIPS 2025 LaTeX from content.
-    
+
     Args:
         title: Paper title
         authors: Author string
         abstract: Abstract text
         body: Main body (sections, etc.)
-        
+
     Returns:
         Complete LaTeX document
     """
