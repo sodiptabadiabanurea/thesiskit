@@ -111,6 +111,7 @@ def _build_verifier(
     verifier_factory,
     s2_api_key: str | None = None,
     arxiv_base_url: str | None = None,
+    acl_base_url: str | None = None,
     cache_dir: Path | None = None,
     retry_attempts: int = 1,
     retry_backoff_seconds: float = 0.0,
@@ -123,6 +124,8 @@ def _build_verifier(
         kwargs["s2_api_key"] = resolved_s2_api_key
     if arxiv_base_url:
         kwargs["arxiv_base_url"] = arxiv_base_url
+    if acl_base_url:
+        kwargs["acl_base_url"] = acl_base_url
     kwargs["cache_dir"] = resolved_cache_dir
     if retry_attempts != 1:
         kwargs["retry_attempts"] = retry_attempts
@@ -254,10 +257,16 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         help="Optional arXiv API query endpoint, such as a Cloudflare Worker cache proxy",
     )
     citation_verify_parser.add_argument(
+        "--acl-base-url",
+        type=str,
+        default=None,
+        help="Optional ACL Anthology base URL for exact-paper BibTeX lookups",
+    )
+    citation_verify_parser.add_argument(
         "--cache-dir",
         type=Path,
         default=None,
-        help="Directory for reusable arXiv/Semantic Scholar metadata cache",
+        help="Directory for reusable arXiv/Semantic Scholar/ACL Anthology metadata cache",
     )
     citation_verify_parser.add_argument(
         "--retry-attempts",
@@ -381,6 +390,7 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
             verifier_factory,
             s2_api_key=args.s2_api_key,
             arxiv_base_url=args.arxiv_base_url,
+            acl_base_url=args.acl_base_url,
             cache_dir=args.cache_dir,
             retry_attempts=args.retry_attempts,
             retry_backoff_seconds=args.retry_backoff,
