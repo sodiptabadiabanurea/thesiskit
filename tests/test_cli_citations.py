@@ -17,7 +17,8 @@ from thesiskit.literature.citations import (
 class RecordingVerifier:
     """Deterministic verifier for CLI tests without network calls."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
         self.seen_titles: list[str] = []
         self.closed = False
 
@@ -101,6 +102,7 @@ def test_render_verification_report_summarizes_checks_and_issues():
     """Markdown reports should be auditable without reading Python objects."""
     good = Citation(title="Verified Paper", authors=["A"], arxiv_id="1234.56789")
     bad = Citation(title="Broken Paper", authors=[], arxiv_id="9999.00000")
+    degraded = Citation(title="Degraded Paper", authors=[], arxiv_id="2005.11401")
     results = [
         VerificationResult(
             citation=good,
@@ -113,8 +115,18 @@ def test_render_verification_report_summarizes_checks_and_issues():
             citation=bad,
             passed=False,
             level=VerificationLevel.UNVERIFIED,
-            checks=[VerificationCheck("arxiv_id", "arxiv", False, "arXiv:9999.00000 was not found")],
+            checks=[
+                VerificationCheck("arxiv_id", "arxiv", False, "arXiv:9999.00000 was not found")
+            ],
             issues=["arXiv:9999.00000 was not found"],
+        ),
+        VerificationResult(
+            citation=degraded,
+            passed=True,
+            level=VerificationLevel.FULLY_VERIFIED,
+            checks=[VerificationCheck("arxiv_id", "arxiv", True, "Found arXiv:2005.11401")],
+            issues=[],
+            warnings=["Semantic Scholar rate-limited; arXiv verification passed"],
         ),
     ]
 
@@ -122,13 +134,16 @@ def test_render_verification_report_summarizes_checks_and_issues():
 
     assert report.startswith("# Citation Verification Report")
     assert "**Source file:** `citations/papers.json`" in report
-    assert "**Citations checked:** 2" in report
-    assert "**Status:** 1 passed / 1 failed" in report
+    assert "**Citations checked:** 3" in report
+    assert "**Status:** 2 passed / 1 failed / 1 warning" in report
     assert "✅ Verified Paper" in report
     assert "❌ Broken Paper" in report
+    assert "⚠️ Degraded Paper" in report
     assert "arxiv_id / arxiv: PASS" in report
     assert "arxiv_id / arxiv: FAIL" in report
     assert "arXiv:9999.00000 was not found" in report
+    assert "Semantic Scholar rate-limited" in report
+    assert report.count("#### Warnings") == 1
 
 
 def test_citations_verify_cli_writes_report_and_returns_failure_for_failed_citations(tmp_path):
@@ -154,7 +169,7 @@ def test_citations_verify_cli_writes_report_and_returns_failure_for_failed_citat
             "--output",
             str(report_path),
         ],
-        verifier_factory=lambda: verifier,
+        verifier_factory=lambda **kwargs: verifier,
     )
 
     assert exit_code == 1
@@ -249,3 +264,70 @@ def test_citations_verify_cli_passes_cache_and_retry_options_to_verifier(tmp_pat
     assert captured_kwargs["retry_backoff_seconds"] == 0.25
     assert captured_kwargs["arxiv_base_url"] == "https://arxiv-cache.example.workers.dev/api/query"
     assert report_path.is_file()
+
+
+def test_citations_verify_cli_reads_s2_api_key_from_env_and_uses_default_cache_dir(
+    tmp_path, monkeypatch
+):
+    """Default CLI verification should use env auth and a reusable user cache."""
+    papers_path = tmp_path / "papers.json"
+    report_path = tmp_path / "verification_report.md"
+    xdg_cache_home = tmp_path / "xdg-cache"
+    papers_path.write_text(
+        json.dumps([{"title": "Verified Paper", "authors": ["A"], "arxiv_id": "1234.56789"}])
+    )
+    monkeypatch.setenv("S2_API_KEY", "env-s2-key")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache_home))
+    captured_kwargs = {}
+
+    def verifier_factory(**kwargs):
+        captured_kwargs.update(kwargs)
+        return RecordingVerifier()
+
+    exit_code = main(
+        [
+            "citations",
+            "verify",
+            "--input",
+            str(papers_path),
+            "--output",
+            str(report_path),
+        ],
+        verifier_factory=verifier_factory,
+    )
+
+    assert exit_code == 0
+    assert captured_kwargs["s2_api_key"] == "env-s2-key"
+    assert captured_kwargs["cache_dir"] == xdg_cache_home / "thesiskit" / "metadata"
+
+
+def test_citations_verify_cli_s2_api_key_flag_overrides_environment(tmp_path, monkeypatch):
+    """Explicit CLI credentials should win over S2_API_KEY from the shell."""
+    papers_path = tmp_path / "papers.json"
+    report_path = tmp_path / "verification_report.md"
+    papers_path.write_text(
+        json.dumps([{"title": "Verified Paper", "authors": ["A"], "arxiv_id": "1234.56789"}])
+    )
+    monkeypatch.setenv("S2_API_KEY", "env-s2-key")
+    captured_kwargs = {}
+
+    def verifier_factory(**kwargs):
+        captured_kwargs.update(kwargs)
+        return RecordingVerifier()
+
+    exit_code = main(
+        [
+            "citations",
+            "verify",
+            "--input",
+            str(papers_path),
+            "--output",
+            str(report_path),
+            "--s2-api-key",
+            "cli-s2-key",
+        ],
+        verifier_factory=verifier_factory,
+    )
+
+    assert exit_code == 0
+    assert captured_kwargs["s2_api_key"] == "cli-s2-key"

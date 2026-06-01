@@ -1,6 +1,7 @@
 """CLI for ThesisKit."""
 
 import argparse
+import os
 import shutil
 from importlib import resources
 from pathlib import Path
@@ -71,6 +72,13 @@ def _copy_tree(source, destination: Path) -> None:
             target.write_bytes(child.read_bytes())
 
 
+def _default_metadata_cache_dir() -> Path:
+    """Return the default user cache for reusable live metadata."""
+    cache_home = os.environ.get("XDG_CACHE_HOME")
+    base_dir = Path(cache_home) if cache_home else Path.home() / ".cache"
+    return base_dir / "thesiskit" / "metadata"
+
+
 def copy_mini_run_example(output_dir: Path, overwrite: bool = False) -> Path:
     """Copy the checked-in mini-run example to a user-controlled directory."""
     source_dir = _mini_run_source()
@@ -109,12 +117,13 @@ def _build_verifier(
 ):
     """Create a citation verifier while keeping tests injectable."""
     kwargs: dict[str, Any] = {}
-    if s2_api_key:
-        kwargs["s2_api_key"] = s2_api_key
+    resolved_s2_api_key = s2_api_key or os.environ.get("S2_API_KEY")
+    resolved_cache_dir = cache_dir or _default_metadata_cache_dir()
+    if resolved_s2_api_key:
+        kwargs["s2_api_key"] = resolved_s2_api_key
     if arxiv_base_url:
         kwargs["arxiv_base_url"] = arxiv_base_url
-    if cache_dir is not None:
-        kwargs["cache_dir"] = cache_dir
+    kwargs["cache_dir"] = resolved_cache_dir
     if retry_attempts != 1:
         kwargs["retry_attempts"] = retry_attempts
     if retry_backoff_seconds != 0.0:
@@ -128,24 +137,26 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         prog="thesiskit",
         description="Everything you need to ship academic research",
     )
-    
+
     parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+
     # Run command
     run_parser = subparsers.add_parser("run", help="Run the research pipeline")
     run_parser.add_argument(
-        "--topic", "-t",
+        "--topic",
+        "-t",
         type=str,
         help="Research topic",
     )
     run_parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         type=Path,
         default=Path("config.yaml"),
         help="Path to config file",
@@ -156,11 +167,12 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         help="Auto-approve gate stages",
     )
     run_parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         help="Output directory",
     )
-    
+
     # Init command
     init_parser = subparsers.add_parser("init", help="Initialize a new project")
     init_parser.add_argument(
@@ -168,11 +180,12 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         type=str,
         help="Project name",
     )
-    
+
     # Validate command
     validate_parser = subparsers.add_parser("validate", help="Validate config file")
     validate_parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         type=Path,
         default=Path("config.yaml"),
         help="Path to config file",
@@ -189,7 +202,8 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         help="Copy the citation-verified mini-run demo",
     )
     mini_run_parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         default=Path("mini-run"),
         help="Destination directory for copied artifacts",
@@ -298,9 +312,9 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         default=Path("citations/papers.json"),
         help="Path for the generated JSON citation metadata",
     )
-    
+
     args = parser.parse_args(argv)
-    
+
     if args.command == "run":
         # Load config
         if args.config.exists():
@@ -308,7 +322,7 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         else:
             console.print("[yellow]Config not found, using defaults[/yellow]")
             config = Config()
-        
+
         # Run pipeline
         run_pipeline(
             config=config,
@@ -317,26 +331,26 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
             output_dir=args.output,
         )
         return 0
-    
+
     elif args.command == "init":
         # Create project structure
         project_dir = Path(args.name)
         project_dir.mkdir(exist_ok=True)
-        
+
         # Create config
         config = Config(project={"name": args.name})
         config.save_yaml(project_dir / "config.yaml")
-        
+
         # Create directories
         (project_dir / "artifacts").mkdir(exist_ok=True)
         (project_dir / "references").mkdir(exist_ok=True)
-        
+
         console.print(f"[green]Created project: {args.name}[/green]")
         console.print("  - config.yaml")
         console.print("  - artifacts/")
         console.print("  - references/")
         return 0
-    
+
     elif args.command == "validate":
         if args.config.exists():
             config = Config.from_yaml(args.config)
@@ -412,7 +426,7 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
     elif args.command == "citations":
         citations_parser.print_help()
         return 0
-    
+
     else:
         parser.print_help()
         return 0

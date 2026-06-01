@@ -33,10 +33,11 @@ citation verification report:
 
 ```bash
 thesiskit example mini-run --output artifacts/mini-run
+# Optional but recommended for higher Semantic Scholar rate limits:
+# export S2_API_KEY=your-semantic-scholar-api-key
 thesiskit citations verify \
   --input artifacts/mini-run/citations/papers.json \
   --output artifacts/mini-run/citations/verification_report.md \
-  --cache-dir artifacts/mini-run/.metadata-cache \
   --retry-attempts 2
 thesiskit citations export-bibtex \
   --input artifacts/mini-run/citations/papers.json \
@@ -46,18 +47,23 @@ thesiskit citations import-bibtex \
   --output artifacts/mini-run/citations/imported_papers.json
 ```
 
-The verifier exits nonzero if any citation fails; add `--allow-failures` when you
-want an audit report even for a known-bad citation set. Use `--cache-dir` to
-reuse successful arXiv/Semantic Scholar metadata during rate-limited or offline
-reruns; delete the cache directory when you want to force fresh upstream lookups.
-Set `--retry-attempts` and optionally `--retry-backoff` when you want transient
-API failures retried before they become explicit report issues. If your team
-runs the same arXiv metadata queries repeatedly, deploy `workers/arxiv-cache-proxy.js`
-and pass it with `--arxiv-base-url` so duplicate requests hit Cloudflare's edge
-cache before touching arXiv. This is a cache layer, not a way to exceed arXiv's
-published API limits. The BibTeX commands move the common bibliographic fields
-between ThesisKit's auditable `papers.json` metadata and reference managers
-without editing files by hand.
+The verifier exits nonzero if any citation has a real metadata mismatch; add
+`--allow-failures` when you want an audit report even for a known-bad citation
+set. Successful arXiv/Semantic Scholar metadata is cached by default under
+`$XDG_CACHE_HOME/thesiskit/metadata` or `~/.cache/thesiskit/metadata`; pass
+`--cache-dir` to pin a project-local cache, and delete that directory when you
+want to force fresh upstream lookups. Set `S2_API_KEY` or pass `--s2-api-key`
+for higher Semantic Scholar limits. If Semantic Scholar is rate-limited but the
+required citation fields are confirmed by arXiv, the citation passes with a
+report warning instead of becoming a false failure. Set `--retry-attempts` and
+optionally `--retry-backoff` when you want transient API failures retried before
+they become explicit report issues or warnings. If your team runs the same arXiv
+metadata queries repeatedly, deploy `workers/arxiv-cache-proxy.js` and pass it
+with `--arxiv-base-url` so duplicate requests hit Cloudflare's edge cache before
+touching arXiv. This is a cache layer, not a way to exceed arXiv's published API
+limits. The BibTeX commands move the common bibliographic fields between
+ThesisKit's auditable `papers.json` metadata and reference managers without
+editing files by hand.
 
 > **Alpha status:** ThesisKit is actively developed. The checked-in tests and
 > `examples/mini-run/` demonstrate the current artifact shape, but the project
@@ -106,7 +112,6 @@ thesiskit example mini-run --output artifacts/mini-run
 thesiskit citations verify \
   --input artifacts/mini-run/citations/papers.json \
   --output artifacts/mini-run/citations/verification_report.md \
-  --cache-dir artifacts/mini-run/.metadata-cache \
   --retry-attempts 2
 thesiskit citations export-bibtex \
   --input artifacts/mini-run/citations/papers.json \
@@ -127,18 +132,18 @@ wrangler deploy workers/arxiv-cache-proxy.js --name thesiskit-arxiv-cache
 thesiskit citations verify \
   --input artifacts/mini-run/citations/papers.json \
   --output artifacts/mini-run/citations/verification_report.md \
-  --cache-dir artifacts/mini-run/.metadata-cache \
   --retry-attempts 2 \
   --arxiv-base-url https://thesiskit-arxiv-cache.<account>.workers.dev/api/query
 ```
 
 The worker only proxies `https://export.arxiv.org/api/query` metadata responses
-and intentionally does not proxy PDFs. Keep `--cache-dir` enabled locally as the
-first defense, then use the Worker to collapse repeated identical live queries.
-Do not use it to exceed arXiv's API terms: legacy API clients should stay at no
-more than one request every three seconds with a single connection. For public
-or team deployments, restrict access with Cloudflare Access or equivalent; an
-unrestricted shared Worker can still amplify simultaneous cache misses.
+and intentionally does not proxy PDFs. Keep the local metadata cache enabled as
+the first defense, then use the Worker to collapse repeated identical live
+queries. Do not use it to exceed arXiv's API terms: legacy API clients should
+stay at no more than one request every three seconds with a single connection.
+For public or team deployments, restrict access with Cloudflare Access or
+equivalent; an unrestricted shared Worker can still amplify simultaneous cache
+misses.
 
 ## How it works
 
