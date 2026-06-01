@@ -9,7 +9,10 @@ class ArxivClient:
     
     BASE_URL = "https://export.arxiv.org/api/query"
     
-    def __init__(self, timeout: float = 30.0):
+    def __init__(self, timeout: float = 30.0, base_url: str | None = None):
+        self.base_url = (base_url if base_url is not None else self.BASE_URL).strip()
+        if not self.base_url:
+            raise ValueError("base_url must not be blank")
         self.client = httpx.Client(timeout=timeout)
     
     def search(
@@ -37,7 +40,7 @@ class ArxivClient:
             "sortOrder": sort_order,
         }
         
-        response = self.client.get(self.BASE_URL, params=params)
+        response = self.client.get(self.base_url, params=params)
         response.raise_for_status()
         
         # Parse ATOM feed (simplified)

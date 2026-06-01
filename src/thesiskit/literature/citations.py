@@ -176,16 +176,22 @@ class CitationVerifier:
         self,
         s2_api_key: Optional[str] = None,
         arxiv_client=None,
+        arxiv_base_url: str | None = None,
         semantic_scholar_client=None,
         cache_dir: Path | str | None = None,
         retry_attempts: int = 1,
         retry_backoff_seconds: float = 0.0,
         sleep_func: Callable[[float], None] = time.sleep,
     ):
+        if arxiv_client is not None and arxiv_base_url:
+            raise ValueError("arxiv_base_url cannot be used together with arxiv_client")
         if arxiv_client is None:
             from thesiskit.literature.arxiv import ArxivClient
 
-            arxiv_client = ArxivClient()
+            if arxiv_base_url:
+                arxiv_client = ArxivClient(base_url=arxiv_base_url)
+            else:
+                arxiv_client = ArxivClient()
         if semantic_scholar_client is None:
             from thesiskit.literature.semanticscholar import SemanticScholarClient
 

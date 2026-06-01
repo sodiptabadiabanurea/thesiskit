@@ -236,3 +236,42 @@ def test_verify_with_report_caches_arxiv_metadata_for_offline_reuse(tmp_path):
     assert second_result.passed is True
     assert second_arxiv_client.requested_ids == []
     assert not second_result.issues
+
+
+def test_verifier_passes_custom_arxiv_base_url_to_default_client(monkeypatch):
+    """CitationVerifier should configure the default arXiv client for proxy routing."""
+    from thesiskit.literature import arxiv as arxiv_module
+
+    captured_kwargs = {}
+
+    class RecordingArxivClient:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(arxiv_module, "ArxivClient", RecordingArxivClient)
+
+    verifier = CitationVerifier(
+        arxiv_base_url="https://arxiv-cache.example.workers.dev/api/query",
+        semantic_scholar_client=FakeSemanticScholarClient(None),
+    )
+
+    assert captured_kwargs["base_url"] == "https://arxiv-cache.example.workers.dev/api/query"
+    verifier.close()
+
+
+def test_verifier_rejects_custom_arxiv_client_and_base_url_together():
+    """Supplying both an already-built client and proxy URL should not silently ignore either."""
+    try:
+        CitationVerifier(
+            arxiv_client=FakeArxivClient(RAG_ARXIV_PAPER),
+            arxiv_base_url="https://arxiv-cache.example.workers.dev/api/query",
+            semantic_scholar_client=FakeSemanticScholarClient(None),
+        )
+    except ValueError as exc:
+        assert "arxiv_base_url" in str(exc)
+        assert "arxiv_client" in str(exc)
+    else:  # pragma: no cover - explicit failure branch
+        raise AssertionError("Expected conflicting arXiv client options to raise ValueError")

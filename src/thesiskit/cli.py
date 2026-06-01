@@ -102,6 +102,7 @@ def copy_mini_run_example(output_dir: Path, overwrite: bool = False) -> Path:
 def _build_verifier(
     verifier_factory,
     s2_api_key: str | None = None,
+    arxiv_base_url: str | None = None,
     cache_dir: Path | None = None,
     retry_attempts: int = 1,
     retry_backoff_seconds: float = 0.0,
@@ -110,6 +111,8 @@ def _build_verifier(
     kwargs: dict[str, Any] = {}
     if s2_api_key:
         kwargs["s2_api_key"] = s2_api_key
+    if arxiv_base_url:
+        kwargs["arxiv_base_url"] = arxiv_base_url
     if cache_dir is not None:
         kwargs["cache_dir"] = cache_dir
     if retry_attempts != 1:
@@ -229,6 +232,12 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         type=str,
         default=None,
         help="Optional Semantic Scholar API key",
+    )
+    citation_verify_parser.add_argument(
+        "--arxiv-base-url",
+        type=str,
+        default=None,
+        help="Optional arXiv API query endpoint, such as a Cloudflare Worker cache proxy",
     )
     citation_verify_parser.add_argument(
         "--cache-dir",
@@ -357,6 +366,7 @@ def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier
         verifier = _build_verifier(
             verifier_factory,
             s2_api_key=args.s2_api_key,
+            arxiv_base_url=args.arxiv_base_url,
             cache_dir=args.cache_dir,
             retry_attempts=args.retry_attempts,
             retry_backoff_seconds=args.retry_backoff,

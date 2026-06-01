@@ -237,6 +237,8 @@ def test_citations_verify_cli_passes_cache_and_retry_options_to_verifier(tmp_pat
             "4",
             "--retry-backoff",
             "0.25",
+            "--arxiv-base-url",
+            "https://arxiv-cache.example.workers.dev/api/query",
         ],
         verifier_factory=verifier_factory,
     )
@@ -245,4 +247,5 @@ def test_citations_verify_cli_passes_cache_and_retry_options_to_verifier(tmp_pat
     assert captured_kwargs["cache_dir"] == cache_dir
     assert captured_kwargs["retry_attempts"] == 4
     assert captured_kwargs["retry_backoff_seconds"] == 0.25
+    assert captured_kwargs["arxiv_base_url"] == "https://arxiv-cache.example.workers.dev/api/query"
     assert report_path.is_file()

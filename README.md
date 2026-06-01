@@ -51,9 +51,13 @@ want an audit report even for a known-bad citation set. Use `--cache-dir` to
 reuse successful arXiv/Semantic Scholar metadata during rate-limited or offline
 reruns; delete the cache directory when you want to force fresh upstream lookups.
 Set `--retry-attempts` and optionally `--retry-backoff` when you want transient
-API failures retried before they become explicit report issues. The BibTeX
-commands move the common bibliographic fields between ThesisKit's auditable
-`papers.json` metadata and reference managers without editing files by hand.
+API failures retried before they become explicit report issues. If your team
+runs the same arXiv metadata queries repeatedly, deploy `workers/arxiv-cache-proxy.js`
+and pass it with `--arxiv-base-url` so duplicate requests hit Cloudflare's edge
+cache before touching arXiv. This is a cache layer, not a way to exceed arXiv's
+published API limits. The BibTeX commands move the common bibliographic fields
+between ThesisKit's auditable `papers.json` metadata and reference managers
+without editing files by hand.
 
 > **Alpha status:** ThesisKit is actively developed. The checked-in tests and
 > `examples/mini-run/` demonstrate the current artifact shape, but the project
@@ -111,6 +115,30 @@ thesiskit citations import-bibtex \
   --input artifacts/mini-run/citations/references.bib \
   --output artifacts/mini-run/citations/imported_papers.json
 ```
+
+## Optional arXiv edge cache
+
+For CI or shared teams that re-run the same citation checks from a source
+checkout or sdist, you can deploy the included Cloudflare Worker template as a
+cache-backed arXiv query endpoint:
+
+```bash
+wrangler deploy workers/arxiv-cache-proxy.js --name thesiskit-arxiv-cache
+thesiskit citations verify \
+  --input artifacts/mini-run/citations/papers.json \
+  --output artifacts/mini-run/citations/verification_report.md \
+  --cache-dir artifacts/mini-run/.metadata-cache \
+  --retry-attempts 2 \
+  --arxiv-base-url https://thesiskit-arxiv-cache.<account>.workers.dev/api/query
+```
+
+The worker only proxies `https://export.arxiv.org/api/query` metadata responses
+and intentionally does not proxy PDFs. Keep `--cache-dir` enabled locally as the
+first defense, then use the Worker to collapse repeated identical live queries.
+Do not use it to exceed arXiv's API terms: legacy API clients should stay at no
+more than one request every three seconds with a single connection. For public
+or team deployments, restrict access with Cloudflare Access or equivalent; an
+unrestricted shared Worker can still amplify simultaneous cache misses.
 
 ## How it works
 
