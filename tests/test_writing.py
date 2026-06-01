@@ -27,7 +27,7 @@ def test_paper_builder():
         .add_reference("doe2024")
         .build()
     )
-    
+
     assert paper.title == "Test Paper"
     assert len(paper.authors) == 1
     assert len(paper.sections) == 2
@@ -45,7 +45,7 @@ def test_paper_to_markdown():
         ],
         references=["ref1"],
     )
-    
+
     md = paper.to_markdown()
     assert "# Test Paper" in md
     assert "John Doe" in md
@@ -56,14 +56,14 @@ def test_paper_to_markdown():
 def test_paper_builder_validation():
     """Test paper builder validation."""
     builder = PaperBuilder()
-    
+
     with pytest.raises(ValueError, match="Title is required"):
         builder.build()
-    
+
     builder.set_title("Test")
     with pytest.raises(ValueError, match="At least one author"):
         builder.build()
-    
+
     builder.add_author("John")
     with pytest.raises(ValueError, match="Abstract is required"):
         builder.build()

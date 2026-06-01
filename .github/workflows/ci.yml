@@ -33,6 +33,9 @@ jobs:
       - name: Ruff
         run: python -m ruff check .
 
+      - name: Black
+        run: python -m black --check src tests
+
       - name: Tests
         run: python -m pytest -q
 

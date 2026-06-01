@@ -10,7 +10,7 @@ def test_full_pipeline_minimal(tmp_path):
     config = Config()
     config.llm.provider = "openai-compatible"
     config.llm.primary_model = "gpt-4o-mini"
-    
+
     # Run with minimal topic
     result = run_full_pipeline(
         topic="Test topic",
@@ -18,7 +18,7 @@ def test_full_pipeline_minimal(tmp_path):
         auto_approve=True,
         output_dir=tmp_path / "test_run",
     )
-    
+
     assert result["run_id"].startswith("tk-")
     assert result["topic"] == "Test topic"
     assert len(result["stages"]) > 0
@@ -28,16 +28,16 @@ def test_full_pipeline_minimal(tmp_path):
 @pytest.mark.integration
 def test_pipeline_stage_progression(tmp_path):
     """Test that stages progress in order."""
-    
+
     config = Config()
-    
+
     result = run_full_pipeline(
         topic="Test",
         config=config,
         auto_approve=True,
         output_dir=tmp_path / "progression_test",
     )
-    
+
     # Check stages are in order
     stages = [s["stage"] for s in result["stages"]]
     assert stages == sorted(stages)

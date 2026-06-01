@@ -37,9 +37,9 @@ def test_config_save_load(tmp_path):
     """Test saving and loading config."""
     config = Config(project={"name": "test"})
     config_path = tmp_path / "config.yaml"
-    
+
     config.save_yaml(config_path)
     assert config_path.exists()
-    
+
     loaded = Config.from_yaml(config_path)
     assert loaded.project["name"] == "test"

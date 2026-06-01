@@ -2,9 +2,9 @@
 
 import pytest
 
-
 # Skip CLI tests for now - Click decorator compatibility issue
 # The CLI works but tests need adjustment for argparse vs Click
+
 
 @pytest.mark.skip(reason="Click decorator compatibility issue")
 def test_cli_version():
