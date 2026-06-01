@@ -106,6 +106,14 @@ class Citation:
     semantic_scholar_id: Optional[str] = None
     url: Optional[str] = None
     abstract: Optional[str] = None
+    venue: Optional[str] = None
+    journal: Optional[str] = None
+    booktitle: Optional[str] = None
+    publisher: Optional[str] = None
+    keywords: list[str] = field(default_factory=list)
+    bibtex_key: Optional[str] = None
+    bibtex_entry_type: str = "article"
+    bibtex_fields: dict[str, str] = field(default_factory=dict)
     citation_count: Optional[int] = None
     verification_level: VerificationLevel = VerificationLevel.UNVERIFIED
     relevance_score: Optional[float] = None
@@ -113,25 +121,59 @@ class Citation:
 
     def to_bibtex(self, key: str) -> str:
         """Convert citation to BibTeX format."""
-        lines = [f"@article{{{key},"]
-        lines.append(f"  title = {{{self.title}}},")
+        entry_type = _clean_bibtex_identifier(self.bibtex_entry_type) or "article"
+        lines = [f"@{entry_type}{{{key},"]
+        _append_bibtex_field(lines, "title", self.title)
 
         if self.authors:
             authors_str = " and ".join(self.authors)
-            lines.append(f"  author = {{{authors_str}}},")
+            _append_bibtex_field(lines, "author", authors_str)
 
         if self.year:
-            lines.append(f"  year = {{{self.year}}},")
+            _append_bibtex_field(lines, "year", str(self.year))
+
+        _append_bibtex_field(lines, "journal", self.journal)
+        _append_bibtex_field(lines, "booktitle", self.booktitle)
+        _append_bibtex_field(lines, "publisher", self.publisher)
+        if self.venue and self.venue not in {self.journal, self.booktitle}:
+            _append_bibtex_field(lines, "venue", self.venue)
+        _append_bibtex_field(lines, "abstract", self.abstract)
+        if self.keywords:
+            _append_bibtex_field(lines, "keywords", ", ".join(self.keywords))
 
         if self.arxiv_id:
-            lines.append(f"  eprint = {{{self.arxiv_id}}},")
-            lines.append("  archiveprefix = {arXiv},")
+            _append_bibtex_field(lines, "eprint", self.arxiv_id)
+            _append_bibtex_field(lines, "archiveprefix", "arXiv")
 
-        if self.doi:
-            lines.append(f"  doi = {{{self.doi}}},")
+        _append_bibtex_field(lines, "doi", self.doi)
+        _append_bibtex_field(lines, "url", self.url)
+        _append_bibtex_field(lines, "semanticscholarid", self.semantic_scholar_id)
 
-        if self.url:
-            lines.append(f"  url = {{{self.url}}},")
+        standard_fields = {
+            "title",
+            "author",
+            "year",
+            "journal",
+            "booktitle",
+            "publisher",
+            "venue",
+            "abstract",
+            "keywords",
+            "eprint",
+            "archiveprefix",
+            "doi",
+            "url",
+            "semanticscholarid",
+        }
+        if not self.arxiv_id:
+            standard_fields.discard("eprint")
+            standard_fields.discard("archiveprefix")
+        if not self.semantic_scholar_id:
+            standard_fields.discard("semanticscholarid")
+        for name in sorted(self.bibtex_fields):
+            cleaned_name = _clean_bibtex_identifier(name)
+            if cleaned_name and cleaned_name not in standard_fields:
+                _append_bibtex_field(lines, cleaned_name, self.bibtex_fields[name])
 
         lines.append("}")
         return "\n".join(lines)
@@ -617,12 +659,21 @@ def citation_from_mapping(data: dict) -> Citation:
     return Citation(
         title=title,
         authors=[author for author in normalized_authors if author],
-        year=data.get("year"),
+        year=_parse_year(data.get("year")),
         arxiv_id=data.get("arxiv_id") or data.get("arxivId") or data.get("arxiv"),
         doi=data.get("doi"),
         semantic_scholar_id=data.get("semantic_scholar_id") or data.get("paperId"),
         url=data.get("url"),
         abstract=data.get("abstract") or data.get("abstract_excerpt"),
+        venue=data.get("venue"),
+        journal=data.get("journal"),
+        booktitle=data.get("booktitle"),
+        publisher=data.get("publisher"),
+        keywords=_normalize_keywords(data.get("keywords")),
+        bibtex_key=data.get("bibtex_key"),
+        bibtex_entry_type=data.get("bibtex_entry_type") or "article",
+        bibtex_fields=_normalize_bibtex_fields(data.get("bibtex_fields")),
+        citation_count=data.get("citation_count"),
     )
 
 
@@ -639,24 +690,53 @@ def citation_to_mapping(citation: Citation) -> dict:
         "semantic_scholar_id": citation.semantic_scholar_id,
         "url": citation.url,
         "abstract": citation.abstract,
+        "venue": citation.venue,
+        "journal": citation.journal,
+        "booktitle": citation.booktitle,
+        "publisher": citation.publisher,
         "citation_count": citation.citation_count,
     }
     data.update({key: value for key, value in optional_fields.items() if value is not None})
+    if citation.keywords:
+        data["keywords"] = citation.keywords
+    if citation.bibtex_key:
+        data["bibtex_key"] = citation.bibtex_key
+    if citation.bibtex_entry_type and citation.bibtex_entry_type != "article":
+        data["bibtex_entry_type"] = citation.bibtex_entry_type
+    if citation.bibtex_fields:
+        data["bibtex_fields"] = dict(sorted(citation.bibtex_fields.items()))
     return data
 
 
 def load_citations_bibtex(path: Path | str) -> list[Citation]:
     """Load Citation objects from a BibTeX file.
 
-    This intentionally supports the common subset ThesisKit exports and the
-    mini-run example uses: title, author, year, eprint/archivePrefix, doi, and
-    url. Unknown fields are ignored instead of making import brittle. Protective
-    case braces such as `{NLP}` are stripped while TeX escape groups are kept.
+    This supports the common subset ThesisKit exports plus richer reference
+    manager metadata: entry type/key, venue fields, abstract, keywords, and
+    custom BibTeX fields. Protective case braces such as `{NLP}` are stripped
+    while TeX escape groups are kept.
     """
     source_path = Path(path)
     entries = _parse_bibtex_entries(source_path.read_text(encoding="utf-8"))
     citations: list[Citation] = []
-    for _entry_type, _key, fields in entries:
+    known_fields = {
+        "title",
+        "author",
+        "year",
+        "eprint",
+        "archiveprefix",
+        "doi",
+        "url",
+        "abstract",
+        "journal",
+        "booktitle",
+        "publisher",
+        "venue",
+        "keywords",
+        "semanticscholarid",
+        "paperid",
+    }
+    for entry_type, key, fields in entries:
         title = fields.get("title", "").strip()
         if not title:
             raise ValueError("BibTeX entry is missing required field: title")
@@ -666,6 +746,16 @@ def load_citations_bibtex(path: Path | str) -> list[Citation]:
         archive_prefix = fields.get("archiveprefix", "").lower()
         eprint = fields.get("eprint")
         arxiv_id = eprint if eprint and archive_prefix == "arxiv" else None
+        journal = fields.get("journal")
+        booktitle = fields.get("booktitle")
+        venue = fields.get("venue") or journal or booktitle
+        bibtex_fields = {
+            name: value for name, value in fields.items() if name not in known_fields and value
+        }
+        if eprint and not arxiv_id:
+            bibtex_fields["eprint"] = eprint
+            if fields.get("archiveprefix"):
+                bibtex_fields["archiveprefix"] = fields["archiveprefix"]
         citations.append(
             Citation(
                 title=title,
@@ -673,7 +763,17 @@ def load_citations_bibtex(path: Path | str) -> list[Citation]:
                 year=year,
                 arxiv_id=arxiv_id,
                 doi=fields.get("doi"),
+                semantic_scholar_id=fields.get("semanticscholarid") or fields.get("paperid"),
                 url=fields.get("url"),
+                abstract=fields.get("abstract"),
+                venue=venue,
+                journal=journal,
+                booktitle=booktitle,
+                publisher=fields.get("publisher"),
+                keywords=_normalize_keywords(fields.get("keywords")),
+                bibtex_key=key or None,
+                bibtex_entry_type=entry_type or "article",
+                bibtex_fields=bibtex_fields,
             )
         )
     return citations
@@ -684,7 +784,7 @@ def citations_to_bibtex(citations: list[Citation]) -> str:
     used_keys: set[str] = set()
     entries = []
     for index, citation in enumerate(citations, start=1):
-        key = _bibtex_key(citation, index=index)
+        key = _citation_bibtex_key(citation, index=index)
         base_key = key
         suffix = 2
         while key in used_keys:
@@ -960,6 +1060,52 @@ def _clean_bibtex_value(value: str) -> str:
     return re.sub(r"\{([^{}\\]+)\}", r"\1", cleaned)
 
 
+def _append_bibtex_field(lines: list[str], name: str, value: object | None) -> None:
+    if value is None:
+        return
+    text = str(value).strip()
+    if not text:
+        return
+    lines.append(f"  {name} = {{{text}}},")
+
+
+def _clean_bibtex_identifier(value: str | None) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[^A-Za-z0-9_-]+", "", str(value).strip()).lower()
+
+
+def _normalize_keywords(value: object | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, str):
+        items = re.split(r"[,;]", value)
+    else:
+        items = [value]
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def _normalize_bibtex_fields(value: object | None) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    fields: dict[str, str] = {}
+    for key, field_value in value.items():
+        name = _clean_bibtex_identifier(str(key))
+        if name and field_value is not None:
+            fields[name] = str(field_value)
+    return fields
+
+
+def _citation_bibtex_key(citation: Citation, index: int) -> str:
+    if citation.bibtex_key:
+        cleaned_key = re.sub(r"[^A-Za-z0-9_:-]+", "", citation.bibtex_key.strip())
+        if cleaned_key:
+            return cleaned_key
+    return _bibtex_key(citation, index=index)
+
+
 def _cache_path_part(value: str) -> str:
     """Make a source/cache key safe to use as one path component."""
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip()).strip("._-")
@@ -968,10 +1114,12 @@ def _cache_path_part(value: str) -> str:
     return safe[:160]
 
 
-def _parse_year(value: Optional[str]) -> Optional[int]:
+def _parse_year(value: object | None) -> Optional[int]:
     if value is None:
         return None
-    match = re.search(r"\d{4}", value)
+    if isinstance(value, int):
+        return value
+    match = re.search(r"\d{4}", str(value))
     return int(match.group(0)) if match else None
 
 

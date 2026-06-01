@@ -49,7 +49,7 @@ class RecordingVerifier:
 
 
 def test_load_citations_json_maps_mini_run_fields(tmp_path):
-    """papers.json entries should become Citation objects while ignoring extra metadata."""
+    """papers.json entries should become Citation objects while preserving citation metadata."""
     papers_path = tmp_path / "papers.json"
     papers_path.write_text(
         json.dumps(
@@ -81,6 +81,7 @@ def test_load_citations_json_maps_mini_run_fields(tmp_path):
             semantic_scholar_id="abc123",
             url="https://arxiv.org/abs/2005.11401",
             abstract="RAG combines parametric and non-parametric memory.",
+            venue="NeurIPS 2020",
         )
     ]
 
