@@ -28,6 +28,12 @@ Run the CLI from a local checkout:
 thesiskit run --topic "retrieval-augmented generation for small research teams" --auto-approve --output artifacts/demo-run
 ```
 
+Copy the checked-in mini-run artifacts into your own workspace:
+
+```bash
+thesiskit example mini-run --output artifacts/mini-run
+```
+
 > **Alpha status:** ThesisKit is actively developed. The checked-in tests and
 > `examples/mini-run/` demonstrate the current artifact shape, but the project
 > is not claiming production-grade automation or real conference acceptance.
@@ -67,6 +73,12 @@ The experiment in the example is intentionally synthetic and deterministic
 (`seed: 42`). It is meant to show the output schema and verification gates, not
 to claim a benchmark result.
 
+You can copy the whole bundle with:
+
+```bash
+thesiskit example mini-run --output artifacts/mini-run
+```
+
 ## How it works
 
 ```mermaid
@@ -105,8 +117,8 @@ The pipeline is organized as **8 phases / 20 stages**:
 
 | Implemented in the current alpha | Roadmap / not guaranteed yet |
 |---|---|
-| arXiv, Semantic Scholar, and citation data structures | Broader source support such as PubMed and ACL Anthology |
-| Citation metadata and BibTeX helpers | Stronger automated relevance scoring and deduplication |
+| arXiv, Semantic Scholar, and citation verification data structures | Broader source support such as PubMed and ACL Anthology |
+| Citation verifier for arXiv ID, DOI, URL, and title matching | Stronger automated relevance scoring and deduplication |
 | Experiment sandbox primitives | Hardened Docker/Firecracker-style isolation |
 | NeurIPS, ICML, and ICLR template modules | Additional templates such as ACL, EMNLP, CVPR, AAAI |
 | Multi-agent review scaffolding | Human-in-the-loop review gates and web dashboard |

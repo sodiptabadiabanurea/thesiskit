@@ -57,6 +57,19 @@ Issues = "https://github.com/sodiptabadiabanurea/thesiskit/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"thesiskit.example_data" = [
+    "mini-run/README.md",
+    "mini-run/input/topic.txt",
+    "mini-run/citations/papers.json",
+    "mini-run/citations/references.bib",
+    "mini-run/citations/verification_report.md",
+    "mini-run/experiment/config.yaml",
+    "mini-run/experiment/results.json",
+    "mini-run/draft/paper.md",
+    "mini-run/verification/full_report.md",
+]
+
 [tool.black]
 line-length = 100
 target-version = ["py310", "py311", "py312"]
