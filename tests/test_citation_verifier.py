@@ -146,3 +146,4 @@ def test_verify_with_report_returns_issue_when_arxiv_lookup_fails():
     assert result.passed is False
     assert citation.verification_level == VerificationLevel.UNVERIFIED
     assert any("arxiv lookup failed" in issue.lower() for issue in result.issues)
+    assert not any("was not found" in issue.lower() for issue in result.issues)

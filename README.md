@@ -28,11 +28,18 @@ Run the CLI from a local checkout:
 thesiskit run --topic "retrieval-augmented generation for small research teams" --auto-approve --output artifacts/demo-run
 ```
 
-Copy the checked-in mini-run artifacts into your own workspace:
+Copy the checked-in mini-run artifacts into your own workspace and regenerate its
+citation verification report:
 
 ```bash
 thesiskit example mini-run --output artifacts/mini-run
+thesiskit citations verify \
+  --input artifacts/mini-run/citations/papers.json \
+  --output artifacts/mini-run/citations/verification_report.md
 ```
+
+The verifier exits nonzero if any citation fails; add `--allow-failures` when you
+want an audit report even for a known-bad citation set.
 
 > **Alpha status:** ThesisKit is actively developed. The checked-in tests and
 > `examples/mini-run/` demonstrate the current artifact shape, but the project
@@ -73,10 +80,13 @@ The experiment in the example is intentionally synthetic and deterministic
 (`seed: 42`). It is meant to show the output schema and verification gates, not
 to claim a benchmark result.
 
-You can copy the whole bundle with:
+You can copy the whole bundle and regenerate a live verification report with:
 
 ```bash
 thesiskit example mini-run --output artifacts/mini-run
+thesiskit citations verify \
+  --input artifacts/mini-run/citations/papers.json \
+  --output artifacts/mini-run/citations/verification_report.md
 ```
 
 ## How it works

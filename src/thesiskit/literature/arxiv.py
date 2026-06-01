@@ -7,7 +7,7 @@ from typing import Optional
 class ArxivClient:
     """Client for searching papers on arXiv."""
     
-    BASE_URL = "http://export.arxiv.org/api/query"
+    BASE_URL = "https://export.arxiv.org/api/query"
     
     def __init__(self, timeout: float = 30.0):
         self.client = httpx.Client(timeout=timeout)

@@ -1,9 +1,11 @@
 """Citation verification and management."""
 
+import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Optional
-import re
 
 
 class VerificationLevel(Enum):
@@ -163,10 +165,12 @@ class CitationVerifier:
         level = VerificationLevel.UNVERIFIED
 
         arxiv_paper = None
+        arxiv_lookup_failed = False
         if citation.arxiv_id:
             try:
                 arxiv_paper = self.arxiv.get_paper(citation.arxiv_id)
             except Exception as exc:  # pragma: no cover - defensive network guard
+                arxiv_lookup_failed = True
                 self._add_issue(
                     checks,
                     issues,
@@ -189,7 +193,7 @@ class CitationVerifier:
                 self._check_title(citation, arxiv_paper.get("title"), "arxiv", checks, issues)
                 self._check_url(citation, arxiv_paper, checks, issues)
                 self._check_doi(citation, arxiv_paper.get("doi"), "arxiv", checks, issues)
-            else:
+            elif not arxiv_lookup_failed:
                 self._add_issue(
                     checks,
                     issues,
@@ -433,3 +437,156 @@ class CitationVerifier:
 
     def _normalize_arxiv_id(self, value: str) -> str:
         return value.strip().removeprefix("arXiv:").split("v")[0]
+
+
+def citation_from_mapping(data: dict) -> Citation:
+    """Build a Citation from a JSON-friendly metadata mapping."""
+    title = str(data.get("title") or "").strip()
+    if not title:
+        raise ValueError("Citation entry is missing required field: title")
+
+    authors = data.get("authors") or []
+    normalized_authors = [
+        author.get("name", "") if isinstance(author, dict) else str(author)
+        for author in authors
+    ]
+
+    return Citation(
+        title=title,
+        authors=[author for author in normalized_authors if author],
+        year=data.get("year"),
+        arxiv_id=data.get("arxiv_id") or data.get("arxivId") or data.get("arxiv"),
+        doi=data.get("doi"),
+        semantic_scholar_id=data.get("semantic_scholar_id") or data.get("paperId"),
+        url=data.get("url"),
+        abstract=data.get("abstract") or data.get("abstract_excerpt"),
+    )
+
+
+def load_citations_json(path: Path | str) -> list[Citation]:
+    """Load a list of Citation objects from a papers.json-style file."""
+    source_path = Path(path)
+    data = json.loads(source_path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError(f"Citation input must be a JSON list: {source_path}")
+    return [citation_from_mapping(item) for item in data]
+
+
+def verify_citations(
+    citations: list[Citation],
+    verifier: Optional[CitationVerifier] = None,
+) -> list[VerificationResult]:
+    """Verify citations and return auditable results."""
+    owns_verifier = verifier is None
+    if verifier is None:
+        verifier = CitationVerifier()
+
+    try:
+        return [verifier.verify_with_report(citation) for citation in citations]
+    finally:
+        if owns_verifier and hasattr(verifier, "close"):
+            verifier.close()
+
+
+def render_verification_report(
+    results: list[VerificationResult],
+    source_path: Path | str | None = None,
+) -> str:
+    """Render citation verification results as an auditable Markdown report."""
+    total = len(results)
+    passed = sum(1 for result in results if result.passed)
+    failed = total - passed
+
+    lines = [
+        "# Citation Verification Report",
+        "",
+    ]
+    if source_path is not None:
+        lines.extend([f"**Source file:** `{source_path}`", ""])
+    lines.extend(
+        [
+            f"**Citations checked:** {total}",
+            f"**Status:** {passed} passed / {failed} failed",
+            "",
+            "## Summary",
+            "",
+        ]
+    )
+
+    if not results:
+        lines.extend(["No citations were provided.", ""])
+        return "\n".join(lines).rstrip() + "\n"
+
+    for result in results:
+        icon = "✅" if result.passed else "❌"
+        citation = result.citation
+        ids = _citation_id_summary(citation)
+        lines.append(f"- {icon} {citation.title} — {result.level.name}{ids}")
+
+    lines.extend(["", "## Per-citation detail", ""])
+    for index, result in enumerate(results, start=1):
+        citation = result.citation
+        icon = "✅" if result.passed else "❌"
+        lines.extend(
+            [
+                f"### [{index}] {icon} {citation.title}",
+                "",
+                f"- **Status:** {'passed' if result.passed else 'failed'}",
+                f"- **Verification level:** {result.level.name}",
+            ]
+        )
+        if citation.authors:
+            lines.append(f"- **Authors:** {', '.join(citation.authors)}")
+        if citation.year:
+            lines.append(f"- **Year:** {citation.year}")
+        if citation.arxiv_id:
+            lines.append(f"- **arXiv:** {citation.arxiv_id}")
+        if citation.doi:
+            lines.append(f"- **DOI:** {citation.doi}")
+        if citation.url:
+            lines.append(f"- **URL:** {citation.url}")
+
+        lines.extend(["", "#### Checks", ""])
+        if result.checks:
+            for check in result.checks:
+                check_status = "PASS" if check.passed else "FAIL"
+                lines.append(
+                    f"- `{check.name} / {check.source}: {check_status}` — {check.detail}"
+                )
+        else:
+            lines.append("- No source checks were performed.")
+
+        lines.extend(["", "#### Issues", ""])
+        if result.issues:
+            for issue in result.issues:
+                lines.append(f"- {issue}")
+        else:
+            lines.append("- None")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def verify_citations_json_file(
+    input_path: Path | str,
+    output_path: Path | str,
+    verifier: Optional[CitationVerifier] = None,
+) -> list[VerificationResult]:
+    """Verify a citations JSON file and write a Markdown report."""
+    citations = load_citations_json(input_path)
+    results = verify_citations(citations, verifier=verifier)
+    report = render_verification_report(results, source_path=Path(input_path))
+
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(report, encoding="utf-8")
+    return results
+
+
+def _citation_id_summary(citation: Citation) -> str:
+    ids = []
+    if citation.arxiv_id:
+        ids.append(f"arXiv:{citation.arxiv_id}")
+    if citation.doi:
+        ids.append(f"DOI:{citation.doi}")
+    return f" ({'; '.join(ids)})" if ids else ""
