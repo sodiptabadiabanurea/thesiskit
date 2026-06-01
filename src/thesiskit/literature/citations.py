@@ -2,6 +2,8 @@
 
 import json
 import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -46,6 +48,46 @@ class VerificationResult:
         for check in self.checks:
             by_name.setdefault(check.name, check)
         return by_name
+
+
+@dataclass
+class _MetadataLookupResult:
+    """Metadata fetched from a live source or read from local cache."""
+
+    paper: Optional[dict]
+    cache_hit: bool = False
+
+
+class _MetadataCache:
+    """Tiny JSON cache for external metadata lookups."""
+
+    def __init__(self, root: Path | str):
+        self.root = Path(root)
+
+    def get(self, source: str, key: str) -> Optional[dict]:
+        """Return cached metadata for source/key, or None if unavailable."""
+        path = self._path(source, key)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def set(self, source: str, key: str, paper: Optional[dict]) -> None:
+        """Persist a successful metadata lookup."""
+        if not paper:
+            return
+        path = self._path(source, key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(paper, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+    def _path(self, source: str, key: str) -> Path:
+        safe_source = _cache_path_part(source)
+        safe_key = _cache_path_part(key)
+        return self.root / safe_source / f"{safe_key}.json"
 
 
 @dataclass
@@ -135,6 +177,10 @@ class CitationVerifier:
         s2_api_key: Optional[str] = None,
         arxiv_client=None,
         semantic_scholar_client=None,
+        cache_dir: Path | str | None = None,
+        retry_attempts: int = 1,
+        retry_backoff_seconds: float = 0.0,
+        sleep_func: Callable[[float], None] = time.sleep,
     ):
         if arxiv_client is None:
             from thesiskit.literature.arxiv import ArxivClient
@@ -147,6 +193,10 @@ class CitationVerifier:
 
         self.arxiv = arxiv_client
         self.s2 = semantic_scholar_client
+        self.cache = _MetadataCache(cache_dir) if cache_dir is not None else None
+        self.retry_attempts = max(1, retry_attempts)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        self._sleep = sleep_func
 
     def verify(self, citation: Citation) -> Citation:
         """Verify a citation and update its verification metadata."""
@@ -165,10 +215,17 @@ class CitationVerifier:
         level = VerificationLevel.UNVERIFIED
 
         arxiv_paper = None
+        arxiv_lookup = _MetadataLookupResult(None)
         arxiv_lookup_failed = False
         if citation.arxiv_id:
+            arxiv_id = citation.arxiv_id
             try:
-                arxiv_paper = self.arxiv.get_paper(citation.arxiv_id)
+                arxiv_lookup = self._lookup_metadata(
+                    source="arxiv",
+                    key=arxiv_id,
+                    fetcher=lambda: self.arxiv.get_paper(arxiv_id),
+                )
+                arxiv_paper = arxiv_lookup.paper
             except Exception as exc:  # pragma: no cover - defensive network guard
                 arxiv_lookup_failed = True
                 self._add_issue(
@@ -176,16 +233,20 @@ class CitationVerifier:
                     issues,
                     name="arxiv_id",
                     source="arxiv",
-                    detail=f"arXiv lookup failed for arXiv:{citation.arxiv_id}: {exc}",
+                    detail=(
+                        f"arXiv lookup failed for arXiv:{citation.arxiv_id} "
+                        f"after {self.retry_attempts} attempt(s): {exc}"
+                    ),
                 )
                 arxiv_paper = None
             if arxiv_paper:
+                source_note = " from cache" if arxiv_lookup.cache_hit else ""
                 checks.append(
                     VerificationCheck(
                         name="arxiv_id",
                         source="arxiv",
                         passed=True,
-                        detail=f"Found arXiv:{citation.arxiv_id}",
+                        detail=f"Found arXiv:{citation.arxiv_id}{source_note}",
                     )
                 )
                 level = VerificationLevel.ARXIV_VERIFIED
@@ -203,19 +264,35 @@ class CitationVerifier:
                 )
 
         s2_paper = None
+        s2_lookup = _MetadataLookupResult(None)
         lookup_id = self._semantic_scholar_lookup_id(citation)
         if lookup_id:
             try:
-                s2_paper = self.s2.get_paper(lookup_id)
+                s2_lookup = self._lookup_metadata(
+                    source="semantic_scholar",
+                    key=lookup_id,
+                    fetcher=lambda: self.s2.get_paper(lookup_id),
+                )
+                s2_paper = s2_lookup.paper
             except Exception as exc:  # pragma: no cover - defensive network guard
-                issues.append(f"Semantic Scholar lookup failed for {lookup_id}: {exc}")
+                self._add_issue(
+                    checks,
+                    issues,
+                    name="semantic_scholar",
+                    source="semantic_scholar",
+                    detail=(
+                        f"Semantic Scholar lookup failed for {lookup_id} "
+                        f"after {self.retry_attempts} attempt(s): {exc}"
+                    ),
+                )
             if s2_paper:
+                source_note = " from cache" if s2_lookup.cache_hit else ""
                 checks.append(
                     VerificationCheck(
                         name="semantic_scholar",
                         source="semantic_scholar",
                         passed=True,
-                        detail=f"Found Semantic Scholar record for {lookup_id}",
+                        detail=f"Found Semantic Scholar record for {lookup_id}{source_note}",
                     )
                 )
                 level = VerificationLevel.SEMANTIC_SCHOLAR_VERIFIED
@@ -263,6 +340,37 @@ class CitationVerifier:
             self.arxiv.close()
         if hasattr(self.s2, "close"):
             self.s2.close()
+
+    def _lookup_metadata(
+        self,
+        source: str,
+        key: str,
+        fetcher: Callable[[], Optional[dict]],
+    ) -> _MetadataLookupResult:
+        """Return metadata from cache or live source with retry/backoff."""
+        if self.cache is not None:
+            cached = self.cache.get(source, key)
+            if cached is not None:
+                return _MetadataLookupResult(paper=cached, cache_hit=True)
+
+        last_exception: Exception | None = None
+        for attempt in range(1, self.retry_attempts + 1):
+            try:
+                paper = fetcher()
+            except Exception as exc:
+                last_exception = exc
+                if attempt < self.retry_attempts and self.retry_backoff_seconds > 0:
+                    delay = self.retry_backoff_seconds * (2 ** (attempt - 1))
+                    self._sleep(delay)
+                continue
+
+            if self.cache is not None:
+                self.cache.set(source, key, paper)
+            return _MetadataLookupResult(paper=paper, cache_hit=False)
+
+        if last_exception is not None:
+            raise last_exception
+        return _MetadataLookupResult(paper=None, cache_hit=False)
 
     def __enter__(self):
         return self
@@ -782,6 +890,14 @@ def _read_bibtex_value(text: str, start: int) -> tuple[str, int]:
 def _clean_bibtex_value(value: str) -> str:
     cleaned = re.sub(r"\s+", " ", value.strip())
     return re.sub(r"\{([^{}\\]+)\}", r"\1", cleaned)
+
+
+def _cache_path_part(value: str) -> str:
+    """Make a source/cache key safe to use as one path component."""
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip()).strip("._-")
+    if not safe:
+        return "metadata"
+    return safe[:160]
 
 
 def _parse_year(value: Optional[str]) -> Optional[int]:

@@ -207,3 +207,42 @@ def test_citations_verify_cli_returns_failure_for_missing_input(tmp_path):
 
     assert exit_code == 1
     assert not (tmp_path / "verification_report.md").exists()
+
+
+def test_citations_verify_cli_passes_cache_and_retry_options_to_verifier(tmp_path):
+    """CLI users should be able to make live verification cache-backed and retry-safe."""
+    papers_path = tmp_path / "papers.json"
+    report_path = tmp_path / "verification_report.md"
+    cache_dir = tmp_path / "metadata-cache"
+    papers_path.write_text(
+        json.dumps([{"title": "Verified Paper", "authors": ["A"], "arxiv_id": "1234.56789"}])
+    )
+    captured_kwargs = {}
+
+    def verifier_factory(**kwargs):
+        captured_kwargs.update(kwargs)
+        return RecordingVerifier()
+
+    exit_code = main(
+        [
+            "citations",
+            "verify",
+            "--input",
+            str(papers_path),
+            "--output",
+            str(report_path),
+            "--cache-dir",
+            str(cache_dir),
+            "--retry-attempts",
+            "4",
+            "--retry-backoff",
+            "0.25",
+        ],
+        verifier_factory=verifier_factory,
+    )
+
+    assert exit_code == 0
+    assert captured_kwargs["cache_dir"] == cache_dir
+    assert captured_kwargs["retry_attempts"] == 4
+    assert captured_kwargs["retry_backoff_seconds"] == 0.25
+    assert report_path.is_file()

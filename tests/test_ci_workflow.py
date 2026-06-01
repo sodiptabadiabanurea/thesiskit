@@ -22,6 +22,8 @@ def test_ci_workflow_runs_project_quality_gates():
         "python -m thesiskit.cli citations import-bibtex",
         '--input "$tmpdir/mini-run/citations/papers.json"',
         '--output "$tmpdir/generated-verification-report.md"',
+        '--cache-dir "$tmpdir/metadata-cache"',
+        "--retry-attempts 2",
         "--allow-failures",
     ]:
         assert expected in workflow
