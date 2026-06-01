@@ -57,6 +57,7 @@ class ArxivClient:
         }
         
         for entry in root.findall("atom:entry", ns):
+            doi = entry.find("arxiv:doi", ns)
             paper = {
                 "id": entry.find("atom:id", ns).text.split("/")[-1],
                 "title": entry.find("atom:title", ns).text.strip(),
@@ -73,6 +74,7 @@ class ArxivClient:
                     c.get("term")
                     for c in entry.findall("atom:category", ns)
                 ],
+                "doi": doi.text.strip() if doi is not None and doi.text else None,
             }
             
             # Find PDF link

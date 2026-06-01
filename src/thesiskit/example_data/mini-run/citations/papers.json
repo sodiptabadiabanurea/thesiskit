@@ -1,0 +1,70 @@
+[
+  {
+    "arxiv_id": "2005.11401",
+    "doi": "10.48550/arXiv.2005.11401",
+    "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+    "authors": [
+      "Patrick Lewis",
+      "Ethan Perez",
+      "Aleksandra Piktus",
+      "Fabio Petroni",
+      "Vladimir Karpukhin",
+      "Naman Goyal",
+      "Heinrich Küttler",
+      "Mike Lewis",
+      "Wen-tau Yih",
+      "Tim Rocktäschel",
+      "Sebastian Riedel",
+      "Douwe Kiela"
+    ],
+    "year": 2020,
+    "venue": "NeurIPS 2020",
+    "url": "https://arxiv.org/abs/2005.11401",
+    "source": "arXiv",
+    "abstract_excerpt": "We introduce RAG models which combine pre-trained parametric and non-parametric memory for knowledge-intensive NLP tasks, retrieving relevant documents from Wikipedia and conditioning a seq2seq model on them.",
+    "relevance_note": "Original RAG paper; defines the parametric + non-parametric memory architecture this mini-run examines for small-team workflows."
+  },
+  {
+    "arxiv_id": "2312.10997",
+    "doi": "10.48550/arXiv.2312.10997",
+    "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+    "authors": [
+      "Yunfan Gao",
+      "Yun Xiong",
+      "Xinyu Gao",
+      "Kangxiang Jia",
+      "Jinliu Pan",
+      "Yuxi Bi",
+      "Yi Dai",
+      "Jiawei Sun",
+      "Meng Wang",
+      "Haofen Wang"
+    ],
+    "year": 2023,
+    "venue": "arXiv preprint",
+    "url": "https://arxiv.org/abs/2312.10997",
+    "source": "arXiv",
+    "abstract_excerpt": "This survey reviews the evolution of RAG paradigms (Naive, Advanced, Modular RAG) and the state of retrieval, generation, and augmentation techniques.",
+    "relevance_note": "Survey grounding the taxonomy used to choose a Naive RAG baseline for the synthetic experiment in this mini-run."
+  },
+  {
+    "arxiv_id": "2302.00083",
+    "doi": "10.48550/arXiv.2302.00083",
+    "title": "In-Context Retrieval-Augmented Language Models",
+    "authors": [
+      "Ori Ram",
+      "Yoav Levine",
+      "Itay Dalmedigos",
+      "Dor Muhlgay",
+      "Amnon Shashua",
+      "Kevin Leyton-Brown",
+      "Yoav Shoham"
+    ],
+    "year": 2023,
+    "venue": "TACL 2023",
+    "url": "https://arxiv.org/abs/2302.00083",
+    "source": "arXiv",
+    "abstract_excerpt": "We show that prepending retrieved documents to the input of an off-the-shelf language model — In-Context RALM — yields large perplexity gains across model sizes without retraining.",
+    "relevance_note": "Justifies the in-context (no-finetune) RAG variant we benchmark against the no-retrieval baseline in this mini-run."
+  }
+]

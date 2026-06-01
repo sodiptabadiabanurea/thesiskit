@@ -1,0 +1,23 @@
+{
+  "experiment": "mini-run-rag-team-questions",
+  "dataset": "synthetic_rag_team_questions_v1",
+  "dataset_size": 20,
+  "seed": 42,
+  "deterministic": true,
+  "requires_network": false,
+  "synthetic": true,
+  "disclaimer": "Synthetic deterministic demo numbers — not a benchmark result.",
+  "conditions": ["baseline", "rag"],
+  "metrics": {
+    "baseline_answer_accuracy": 0.45,
+    "rag_answer_accuracy": 0.85,
+    "citation_coverage": 0.95,
+    "retrieval_recall_at_3": 0.9
+  },
+  "per_question": {
+    "n_correct_baseline": 9,
+    "n_correct_rag": 17,
+    "n_total": 20
+  },
+  "runtime_seconds": 0.12
+}

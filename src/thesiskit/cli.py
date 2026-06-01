@@ -1,6 +1,8 @@
 """CLI for ThesisKit."""
 
 import argparse
+import shutil
+from importlib import resources
 from pathlib import Path
 
 from rich.console import Console
@@ -10,6 +12,82 @@ from thesiskit.config import Config
 from thesiskit.pipeline.runner import run_pipeline
 
 console = Console()
+
+
+def _project_root() -> Path:
+    """Return the repository root when running from a source checkout."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _mini_run_source():
+    """Return mini-run artifacts from a source checkout or installed package data."""
+    checkout_source = _project_root() / "examples" / "mini-run"
+    if checkout_source.is_dir():
+        return checkout_source
+
+    try:
+        package_source = resources.files("thesiskit.example_data").joinpath("mini-run")
+    except ModuleNotFoundError as exc:  # pragma: no cover - packaging failure guard
+        raise FileNotFoundError("Bundled mini-run example data is not available") from exc
+
+    if package_source.is_dir():
+        return package_source
+
+    raise FileNotFoundError(f"Mini-run example not found: {checkout_source}")
+
+
+def _is_thesiskit_mini_run(path: Path) -> bool:
+    """Return whether a directory looks like a previous ThesisKit mini-run copy."""
+    markers = [
+        "input/topic.txt",
+        "citations/papers.json",
+        "experiment/results.json",
+        "verification/full_report.md",
+    ]
+    return path.is_dir() and all((path / marker).is_file() for marker in markers)
+
+
+def _copy_tree(source, destination: Path) -> None:
+    """Copy a filesystem path or importlib Traversable tree."""
+    if isinstance(source, Path):
+        shutil.copytree(source, destination)
+        return
+
+    destination.mkdir(parents=True, exist_ok=False)
+    for child in source.iterdir():
+        target = destination / child.name
+        if child.is_dir():
+            _copy_tree(child, target)
+        else:
+            target.write_bytes(child.read_bytes())
+
+
+def copy_mini_run_example(output_dir: Path, overwrite: bool = False) -> Path:
+    """Copy the checked-in mini-run example to a user-controlled directory."""
+    source_dir = _mini_run_source()
+
+    output_dir = output_dir.resolve()
+    if output_dir.exists():
+        if not overwrite:
+            raise FileExistsError(
+                f"Output path already exists: {output_dir}. Use --overwrite to replace it."
+            )
+        if output_dir.is_dir():
+            is_empty = not any(output_dir.iterdir())
+            if not is_empty and not _is_thesiskit_mini_run(output_dir):
+                raise FileExistsError(
+                    f"Output path exists and is not a ThesisKit mini-run: {output_dir}. "
+                    "Refusing to delete unrelated files."
+                )
+            shutil.rmtree(output_dir)
+        else:
+            raise FileExistsError(
+                f"Output path exists and is not a ThesisKit mini-run directory: {output_dir}"
+            )
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    _copy_tree(source_dir, output_dir)
+    return output_dir
 
 
 def main():
@@ -67,6 +145,28 @@ def main():
         default=Path("config.yaml"),
         help="Path to config file",
     )
+
+    # Example command
+    example_parser = subparsers.add_parser("example", help="Copy reproducible examples")
+    example_subparsers = example_parser.add_subparsers(
+        dest="example_name",
+        help="Available examples",
+    )
+    mini_run_parser = example_subparsers.add_parser(
+        "mini-run",
+        help="Copy the citation-verified mini-run demo",
+    )
+    mini_run_parser.add_argument(
+        "--output", "-o",
+        type=Path,
+        default=Path("mini-run"),
+        help="Destination directory for copied artifacts",
+    )
+    mini_run_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace the destination if it already exists",
+    )
     
     args = parser.parse_args()
     
@@ -112,6 +212,18 @@ def main():
             console.print(f"  LLM: {config.llm.provider} / {config.llm.primary_model}")
         else:
             console.print(f"[red]✗ Config not found: {args.config}[/red]")
+
+    elif args.command == "example" and args.example_name == "mini-run":
+        try:
+            copied_to = copy_mini_run_example(args.output, overwrite=args.overwrite)
+        except (FileExistsError, FileNotFoundError) as exc:
+            console.print(f"[red]✗ {exc}[/red]")
+            raise SystemExit(1) from exc
+
+        console.print(f"[green]Copied mini-run example to {copied_to}[/green]")
+
+    elif args.command == "example":
+        example_parser.print_help()
     
     else:
         parser.print_help()
