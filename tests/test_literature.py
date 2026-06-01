@@ -49,5 +49,5 @@ def test_verification_level():
 def test_arxiv_client_init(mock_client):
     """Test arXiv client initialization."""
     client = ArxivClient(timeout=60.0)
-    assert client.BASE_URL == "http://export.arxiv.org/api/query"
+    assert client.BASE_URL == "https://export.arxiv.org/api/query"
     client.close()

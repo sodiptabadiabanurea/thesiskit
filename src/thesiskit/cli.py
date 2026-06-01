@@ -4,11 +4,13 @@ import argparse
 import shutil
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 
 from thesiskit import __version__
 from thesiskit.config import Config
+from thesiskit.literature.citations import CitationVerifier, verify_citations_json_file
 from thesiskit.pipeline.runner import run_pipeline
 
 console = Console()
@@ -90,7 +92,14 @@ def copy_mini_run_example(output_dir: Path, overwrite: bool = False) -> Path:
     return output_dir
 
 
-def main():
+def _build_verifier(verifier_factory, s2_api_key: str | None = None):
+    """Create a citation verifier while keeping tests injectable."""
+    if s2_api_key:
+        return verifier_factory(s2_api_key=s2_api_key)
+    return verifier_factory()
+
+
+def main(argv: list[str] | None = None, verifier_factory: Any = CitationVerifier) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="thesiskit",
@@ -167,8 +176,47 @@ def main():
         action="store_true",
         help="Replace the destination if it already exists",
     )
+
+    # Citations command
+    citations_parser = subparsers.add_parser(
+        "citations",
+        help="Verify and report citation metadata",
+    )
+    citation_subparsers = citations_parser.add_subparsers(
+        dest="citation_command",
+        help="Citation commands",
+    )
+    citation_verify_parser = citation_subparsers.add_parser(
+        "verify",
+        help="Verify papers.json citations and write a Markdown report",
+    )
+    citation_verify_parser.add_argument(
+        "--input",
+        "-i",
+        type=Path,
+        default=Path("citations/papers.json"),
+        help="Path to a JSON list of citation metadata",
+    )
+    citation_verify_parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=Path("citations/verification_report.md"),
+        help="Path for the generated Markdown verification report",
+    )
+    citation_verify_parser.add_argument(
+        "--s2-api-key",
+        type=str,
+        default=None,
+        help="Optional Semantic Scholar API key",
+    )
+    citation_verify_parser.add_argument(
+        "--allow-failures",
+        action="store_true",
+        help="Write the report but exit 0 even when citations fail verification",
+    )
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     
     if args.command == "run":
         # Load config
@@ -185,6 +233,7 @@ def main():
             auto_approve=args.auto_approve,
             output_dir=args.output,
         )
+        return 0
     
     elif args.command == "init":
         # Create project structure
@@ -203,6 +252,7 @@ def main():
         console.print("  - config.yaml")
         console.print("  - artifacts/")
         console.print("  - references/")
+        return 0
     
     elif args.command == "validate":
         if args.config.exists():
@@ -210,24 +260,53 @@ def main():
             console.print("[green]✓ Config is valid[/green]")
             console.print(f"  Topic: {config.research.topic or '(not set)'}")
             console.print(f"  LLM: {config.llm.provider} / {config.llm.primary_model}")
+            return 0
         else:
             console.print(f"[red]✗ Config not found: {args.config}[/red]")
+            return 1
 
     elif args.command == "example" and args.example_name == "mini-run":
         try:
             copied_to = copy_mini_run_example(args.output, overwrite=args.overwrite)
         except (FileExistsError, FileNotFoundError) as exc:
             console.print(f"[red]✗ {exc}[/red]")
-            raise SystemExit(1) from exc
+            return 1
 
         console.print(f"[green]Copied mini-run example to {copied_to}[/green]")
+        return 0
 
     elif args.command == "example":
         example_parser.print_help()
+        return 0
+
+    elif args.command == "citations" and args.citation_command == "verify":
+        verifier = _build_verifier(verifier_factory, args.s2_api_key)
+        try:
+            results = verify_citations_json_file(args.input, args.output, verifier=verifier)
+        except (FileNotFoundError, ValueError) as exc:
+            console.print(f"[red]✗ {exc}[/red]")
+            return 1
+        finally:
+            if hasattr(verifier, "close"):
+                verifier.close()
+
+        passed = sum(1 for result in results if result.passed)
+        failed = len(results) - passed
+        console.print(f"[green]Wrote citation verification report to {args.output}[/green]")
+        if failed:
+            console.print(f"[red]✗ Citation verification: {passed} passed / {failed} failed[/red]")
+        else:
+            console.print(f"[green]✓ Citation verification: {passed} passed / 0 failed[/green]")
+        return 0 if failed == 0 or args.allow_failures else 1
+
+    elif args.command == "citations":
+        citations_parser.print_help()
+        return 0
     
     else:
         parser.print_help()
+        return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
