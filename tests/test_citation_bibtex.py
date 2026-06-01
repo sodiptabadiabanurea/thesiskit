@@ -47,14 +47,84 @@ def test_load_citations_bibtex_reads_common_fields_and_utf8(tmp_path):
             arxiv_id="2005.11401",
             doi="10.48550/arXiv.2005.11401",
             url="https://arxiv.org/abs/2005.11401",
+            bibtex_key="lewis2020rag",
+            bibtex_entry_type="inproceedings",
         ),
         Citation(
             title="In-Context Retrieval-Augmented Language Models",
             authors=["Ori Ram"],
             year=2023,
             arxiv_id="2302.00083",
+            bibtex_key="ram2023incontext",
         ),
     ]
+
+
+def test_load_citations_bibtex_preserves_extended_metadata_and_custom_fields(tmp_path):
+    """BibTeX import should keep venue, abstract, keywords, entry key, and custom IDs."""
+    bib_path = tmp_path / "references.bib"
+    bib_path.write_text(
+        """@inproceedings{gao2023survey,
+  author = {Yunfan Gao and Yun Xiong},
+  title = {Retrieval-Augmented Generation for Large Language Models: A Survey},
+  year = {2023},
+  booktitle = {Findings of the Association for Computational Linguistics},
+  venue = {ACL Findings 2023},
+  publisher = {Association for Computational Linguistics},
+  abstract = {A survey of retrieval-augmented generation systems.},
+  keywords = {retrieval-augmented generation, large language models, survey},
+  eprint = {2312.10997},
+  archivePrefix = {arXiv},
+  aclid = {2023.findings-acl.123},
+  semanticScholarId = {abcd1234},
+  note = {Reference-manager custom note}
+}
+""",
+        encoding="utf-8",
+    )
+
+    [citation] = load_citations_bibtex(bib_path)
+
+    assert citation.bibtex_entry_type == "inproceedings"
+    assert citation.bibtex_key == "gao2023survey"
+    assert citation.booktitle == "Findings of the Association for Computational Linguistics"
+    assert citation.venue == "ACL Findings 2023"
+    assert citation.publisher == "Association for Computational Linguistics"
+    assert citation.abstract == "A survey of retrieval-augmented generation systems."
+    assert citation.semantic_scholar_id == "abcd1234"
+    assert citation.keywords == [
+        "retrieval-augmented generation",
+        "large language models",
+        "survey",
+    ]
+    assert citation.bibtex_fields == {
+        "aclid": "2023.findings-acl.123",
+        "note": "Reference-manager custom note",
+    }
+
+
+def test_load_citations_bibtex_preserves_non_arxiv_eprint_metadata(tmp_path):
+    """Non-arXiv eprint/archivePrefix fields should round-trip as BibTeX metadata."""
+    bib_path = tmp_path / "references.bib"
+    bib_path.write_text(
+        """@article{pmid2024example,
+  author = {A Researcher},
+  title = {Biomedical Retrieval Systems},
+  year = {2024},
+  eprint = {12345678},
+  archivePrefix = {PubMed}
+}
+""",
+        encoding="utf-8",
+    )
+
+    [citation] = load_citations_bibtex(bib_path)
+
+    assert citation.arxiv_id is None
+    assert citation.bibtex_fields == {"archiveprefix": "PubMed", "eprint": "12345678"}
+    exported = citations_to_bibtex([citation])
+    assert "eprint = {12345678}" in exported
+    assert "archiveprefix = {PubMed}" in exported
 
 
 def test_load_citations_bibtex_requires_titles(tmp_path):
@@ -98,6 +168,39 @@ def test_citations_to_bibtex_generates_deterministic_utf8_entries():
     assert "archiveprefix = {arXiv}" in bibtex
     assert "@article{ram2023incontext," in bibtex
     assert bibtex.endswith("\n")
+
+
+def test_citations_to_bibtex_exports_extended_metadata_and_preserved_fields():
+    """BibTeX export should write richer metadata without dropping custom fields."""
+    citation = Citation(
+        title="Retrieval-Augmented Generation for Large Language Models: A Survey",
+        authors=["Yunfan Gao", "Yun Xiong"],
+        year=2023,
+        arxiv_id="2312.10997",
+        doi="10.48550/arXiv.2312.10997",
+        semantic_scholar_id="abcd1234",
+        url="https://arxiv.org/abs/2312.10997",
+        abstract="A survey of retrieval-augmented generation systems.",
+        venue="ACL Findings 2023",
+        booktitle="Findings of the Association for Computational Linguistics",
+        publisher="Association for Computational Linguistics",
+        keywords=["retrieval-augmented generation", "large language models"],
+        bibtex_entry_type="inproceedings",
+        bibtex_key="gao2023survey",
+        bibtex_fields={"aclid": "2023.findings-acl.123", "note": "Custom note"},
+    )
+
+    bibtex = citations_to_bibtex([citation])
+
+    assert bibtex.startswith("@inproceedings{gao2023survey,")
+    assert "booktitle = {Findings of the Association for Computational Linguistics}" in bibtex
+    assert "venue = {ACL Findings 2023}" in bibtex
+    assert "publisher = {Association for Computational Linguistics}" in bibtex
+    assert "abstract = {A survey of retrieval-augmented generation systems.}" in bibtex
+    assert "keywords = {retrieval-augmented generation, large language models}" in bibtex
+    assert "semanticscholarid = {abcd1234}" in bibtex
+    assert "aclid = {2023.findings-acl.123}" in bibtex
+    assert "note = {Custom note}" in bibtex
 
 
 def test_citations_to_bibtex_disambiguates_duplicate_keys():
@@ -167,5 +270,6 @@ def test_citations_bibtex_cli_export_and_import_round_trip(tmp_path):
             "arxiv_id": "2005.11401",
             "doi": "10.48550/arXiv.2005.11401",
             "url": "https://arxiv.org/abs/2005.11401",
+            "bibtex_key": "lewis2020retrieval",
         }
     ]

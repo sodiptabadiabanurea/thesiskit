@@ -61,9 +61,10 @@ they become explicit report issues or warnings. If your team runs the same arXiv
 metadata queries repeatedly, deploy `workers/arxiv-cache-proxy.js` and pass it
 with `--arxiv-base-url` so duplicate requests hit Cloudflare's edge cache before
 touching arXiv. This is a cache layer, not a way to exceed arXiv's published API
-limits. The BibTeX commands move the common bibliographic fields between
-ThesisKit's auditable `papers.json` metadata and reference managers without
-editing files by hand.
+limits. The BibTeX commands move common bibliographic fields plus richer
+reference-manager metadata (abstracts, journal/booktitle venues, publishers,
+keywords, BibTeX keys, and custom fields) between ThesisKit's auditable
+`papers.json` metadata and reference managers without editing files by hand.
 
 > **Alpha status:** ThesisKit is actively developed. The checked-in tests and
 > `examples/mini-run/` demonstrate the current artifact shape, but the project
@@ -185,7 +186,7 @@ The pipeline is organized as **8 phases / 20 stages**:
 |---|---|
 | arXiv, Semantic Scholar, and citation verification data structures | Broader source support such as PubMed and ACL Anthology |
 | Citation verifier for arXiv ID, DOI, URL, and title matching with optional local metadata cache/retry | Stronger automated relevance scoring and deduplication |
-| BibTeX import/export CLI for `papers.json` citation metadata | Richer BibTeX field preservation for abstracts, venues, and custom IDs |
+| BibTeX import/export CLI for `papers.json` citation metadata, including abstract, venue, publisher, keywords, keys, and custom field preservation | Richer CSL/EndNote/RIS import/export beyond BibTeX |
 | Experiment sandbox primitives | Hardened Docker/Firecracker-style isolation |
 | NeurIPS, ICML, and ICLR template modules | Additional templates such as ACL, EMNLP, CVPR, AAAI |
 | Multi-agent review scaffolding | Human-in-the-loop review gates and web dashboard |
